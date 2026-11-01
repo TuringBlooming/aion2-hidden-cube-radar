@@ -3,6 +3,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
+import socket
 import subprocess
 import sys
 import tempfile
@@ -14,6 +15,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from aion2_redbag_map import __version__
 from aion2_redbag_map.__main__ import main
+from aion2_redbag_map.desktop import DesktopWindow, run
 from aion2_redbag_map.runtime import (APPLICATION_ID, DesktopError, LocalClient, NpcapMissing,
                                      NoRedirect, RuntimeController, ServiceCollision, worker_command)
 
@@ -281,6 +283,16 @@ class DesktopControllerTests(unittest.TestCase):
 
 
 class LocalClientTests(unittest.TestCase):
+    def test_closed_loopback_port_returns_none_without_starting_a_process(self):
+        # On Windows a refused localhost connection can take about two seconds.
+        # Exercise the real refusal path so a shorter HTTP timeout cannot mask it.
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as available:
+            available.bind(("127.0.0.1", 0))
+            port = available.getsockname()[1]
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("subprocess.Popen", side_effect=AssertionError("must not start a process")):
+                self.assertIsNone(LocalClient(port, Path(directory)).snapshot())
+
     def test_identity_and_directory_must_match_before_control(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -346,6 +358,76 @@ class LocalClientTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join(2)
+
+
+class ExplicitStartupTests(unittest.TestCase):
+    def window(self):
+        window = DesktopWindow.__new__(DesktopWindow)
+        window.root = Mock()
+        window.controller = Mock()
+        window.perform = Mock()
+        window.closing = False
+        return window
+
+    def test_default_entry_forwards_idle_flags(self):
+        with patch("aion2_redbag_map.desktop.run", return_value=0) as desktop:
+            self.assertEqual(main([]), 0)
+        desktop.assert_called_once_with(18726, None, start_receiving=False, show_overlay=False, minimized=False)
+        window = self.window()
+        window.schedule_startup()
+        window.root.iconify.assert_not_called()
+        window.root.after_idle.assert_not_called()
+        window.perform.assert_not_called()
+        self.assertEqual(window.controller.mock_calls, [])
+
+    def test_explicit_flags_forward_through_entry_and_run(self):
+        with patch("aion2_redbag_map.desktop.run", return_value=0) as desktop:
+            main(["--port", "49173", "--data-dir", "isolated", "--start-receiving", "--show-overlay", "--minimized"])
+        desktop.assert_called_once_with(49173, Path("isolated"), start_receiving=True, show_overlay=True, minimized=True)
+        with patch("aion2_redbag_map.desktop.RuntimeController") as controller:
+            with patch("aion2_redbag_map.desktop.DesktopWindow") as window:
+                run(49173, Path("isolated"), start_receiving=True, show_overlay=True, minimized=True)
+        controller.assert_called_once_with(49173, Path("isolated"))
+        window.assert_called_once_with(controller.return_value, start_receiving=True, show_overlay=True, minimized=True)
+        window.return_value.run.assert_called_once_with()
+
+    def test_requested_start_is_one_managed_task_in_receive_then_overlay_order(self):
+        window = self.window()
+        window.schedule_startup(start_receiving=True, show_overlay=True, minimized=True)
+        window.root.iconify.assert_called_once_with()
+        window.root.after_idle.assert_called_once()
+        self.assertEqual(window.controller.mock_calls, [])
+        window.root.after_idle.call_args.args[0]()
+        window.perform.assert_called_once()
+        action = window.perform.call_args.args[0]
+        action()
+        self.assertEqual([call[0] for call in window.controller.mock_calls], ["start_receiving", "show_overlay"])
+
+    def test_overlay_only_does_not_implicitly_start_live_and_closing_cancels_pending_steps(self):
+        window = self.window()
+        window.start_requested(False, True)
+        window.perform.call_args.args[0]()
+        window.controller.start_receiving.assert_not_called()
+        window.controller.show_overlay.assert_called_once_with()
+        window = self.window()
+        window.schedule_startup(start_receiving=True, show_overlay=True)
+        window.closing = True
+        window.root.after_idle.call_args.args[0]()
+        window.perform.assert_not_called()
+        window = self.window()
+        window.start_requested(True, True)
+        action = window.perform.call_args.args[0]
+        window.controller.start_receiving.side_effect = lambda: setattr(window, "closing", True)
+        action()
+        window.controller.show_overlay.assert_not_called()
+
+    def test_failed_live_start_does_not_open_overlay_as_if_start_succeeded(self):
+        window = self.window()
+        window.start_requested(True, True)
+        window.controller.start_receiving.side_effect = DesktopError("start failed")
+        with self.assertRaises(DesktopError):
+            window.perform.call_args.args[0]()
+        window.controller.show_overlay.assert_not_called()
 
 
 if __name__ == "__main__":

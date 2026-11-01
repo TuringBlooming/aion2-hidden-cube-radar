@@ -48,13 +48,17 @@ def dispatch(argv=None):
     parser.add_argument("--port", type=int, default=18726)
     parser.add_argument("--data-dir", type=Path)
     parser.add_argument("--self-check", type=Path, metavar="PATH")
+    parser.add_argument("--start-receiving", action="store_true", help="Explicitly start receiving after opening the manager")
+    parser.add_argument("--show-overlay", action="store_true", help="Show the managed desktop map")
+    parser.add_argument("--minimized", action="store_true", help="Open the manager minimized")
     args = parser.parse_args(arguments)
     if not 1024 <= args.port <= 65535:
         parser.error("invalid local port")
     if args.self_check:
         return 0 if self_check(args.self_check)["ok"] else 1
     from .desktop import run
-    return run(args.port, args.data_dir)
+    return run(args.port, args.data_dir, start_receiving=args.start_receiving,
+               show_overlay=args.show_overlay, minimized=args.minimized)
 
 
 if __name__ == "__main__":

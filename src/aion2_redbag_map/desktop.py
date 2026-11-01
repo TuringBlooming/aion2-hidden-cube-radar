@@ -11,7 +11,7 @@ from .runtime import DesktopError, NPCAP_URL, RuntimeController
 
 
 class DesktopWindow:
-    def __init__(self, controller):
+    def __init__(self, controller, *, start_receiving=False, show_overlay=False, minimized=False):
         import tkinter as tk
         from tkinter import filedialog, messagebox, ttk
         self.tk, self.ttk, self.filedialog, self.messagebox = tk, ttk, filedialog, messagebox
@@ -100,6 +100,28 @@ class DesktopWindow:
         self._set_buttons()
         self.root.after(100, self.drain)
         self.root.after(50, self.poll)
+        self.schedule_startup(start_receiving=start_receiving, show_overlay=show_overlay, minimized=minimized)
+
+    def schedule_startup(self, *, start_receiving=False, show_overlay=False, minimized=False):
+        if minimized:
+            self.root.iconify()
+        if start_receiving or show_overlay:
+            self.root.after_idle(lambda: self.start_requested(start_receiving, show_overlay))
+
+    def start_requested(self, start_receiving, show_overlay):
+        if self.closing:
+            return
+
+        def action():
+            if self.closing:
+                return
+            if start_receiving:
+                self.controller.start_receiving()
+            if show_overlay and not self.closing:
+                self.controller.show_overlay()
+
+        self.perform(action, "正在开始接收并打开悬浮地图…" if start_receiving and show_overlay
+                     else "正在开始接收…" if start_receiving else "正在打开悬浮地图…")
 
     def _set_buttons(self):
         for button in self.buttons:
@@ -221,6 +243,7 @@ class DesktopWindow:
         self.root.mainloop()
 
 
-def run(port=18726, data_dir=None):
-    DesktopWindow(RuntimeController(port, data_dir)).run()
+def run(port=18726, data_dir=None, *, start_receiving=False, show_overlay=False, minimized=False):
+    DesktopWindow(RuntimeController(port, data_dir), start_receiving=start_receiving,
+                  show_overlay=show_overlay, minimized=minimized).run()
     return 0

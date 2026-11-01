@@ -89,7 +89,10 @@ class LocalClient:
 
     def _request(self, request):
         try:
-            with self.opener.open(request, timeout=1.5) as response:
+            # Windows can take about two seconds to return WSAECONNREFUSED on
+            # an unused loopback port. A shorter timeout hides the idle state
+            # and prevents the manager from starting its own service.
+            with self.opener.open(request, timeout=4) as response:
                 raw = response.read(8 * 1024 * 1024 + 1)
             if len(raw) > 8 * 1024 * 1024:
                 raise ServiceCollision("本机地图返回了异常数据，已停止操作。")
