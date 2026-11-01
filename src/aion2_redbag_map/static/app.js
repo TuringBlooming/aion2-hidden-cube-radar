@@ -10,7 +10,7 @@
   const view = { width: 0, height: 0, dpr: 1, cx: 0, cy: 0, scale: 1, fit: 1, ready: false, pointer: null, hover: null };
   const assets = new Map();
   let repaintPending = false, toastTimer = null, alertTimer = null, pollTimer = null;
-  let activeAlert = null, languageSyncKey = null;
+  let activeAlert = null, languageRequest = null, languageSyncing = false, languageRevision = 0;
   let legacyRecordsKey = null, legacyRecords = null;
   try { state.notify = localStorage.getItem("redbag-desktop-notifications") === "true"; } catch (_) {}
   try { state.showCandidates = localStorage.getItem("redbag-show-candidates") !== "false"; } catch (_) {}
@@ -568,10 +568,15 @@
     if (!replay && state.data?.notification?.available !== true && state.notify && "Notification" in window && Notification.permission === "granted") { try { const notification = new Notification(item ? t("AION2 · 收到红色背包记录") : t("AION2 · 测试提醒"), { body: $("alert-text").textContent, tag: `redbag-${alert.seq}`, silent: true }); notification.onclick = () => { window.focus(); if (item) selectRecord(item.id, true); notification.close(); }; } catch (_) {} }
   }
 
-  function acceptData(data) {
+  function acceptData(data, languageVersion = languageRevision) {
     const previousMap = state.mapId, changedSession = state.session !== data.session_id;
+    const acceptLanguage = languageVersion === languageRevision;
     state.data = data; state.connected = true; state.maps = Array.isArray(data.maps) ? data.maps : []; state.records = recordsWithRefreshEstimates(Array.isArray(data.records) ? data.records : []); state.data.records = state.records; state.session = data.session_id;
     state.mapId = data.selected_map_id ?? state.maps[0]?.id ?? 1110;
+    if (changedSession) { languageRequest = null; languageRevision += 1; }
+    // Connected windows share the service preference. Never write a saved browser
+    // preference on connection, or let an old poll undo an in-flight selection.
+    if (acceptLanguage && !languageRequest && window.I18N.languages.includes(data.language) && data.language !== locale()) applyLanguage(data.language);
     const changedMap = String(previousMap) !== String(state.mapId);
     if (changedSession || changedMap) {
       state.selected = null; state.selectedCandidate = null; state.playerFollowKey = null;
@@ -582,38 +587,53 @@
     const seq = Number(data.alert_seq || 0);
     if (state.lastAlertSeq === null || changedSession) state.lastAlertSeq = seq;
     else if (seq > state.lastAlertSeq) { state.lastAlertSeq = seq; if (data.latest_alert) showAlert(data.latest_alert); }
-    followPlayerPosition(); renderPlayer(); renderConnection(); renderMaps(); renderRecords(); requestPaint(); syncLanguage();
+    followPlayerPosition(); renderPlayer(); renderConnection(); renderMaps(); renderRecords(); requestPaint();
   }
 
   async function syncLanguage() {
-    if (!state.connected || !state.data?.control_token || !Object.prototype.hasOwnProperty.call(state.data, "language")) return;
-    const language = locale(), key = `${state.session}:${language}`;
-    if (languageSyncKey === key) return;
-    languageSyncKey = key;
-    if (state.data.language === language) return;
+    if (languageSyncing) return;
+    languageSyncing = true;
     try {
-      const response = await fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json", "X-Redbag-Key": state.data.control_token }, body: JSON.stringify({ action: "language", language }), signal: AbortSignal.timeout(5000) });
-      if (!response.ok) throw new Error("language sync failed");
-      const result = await response.json();
-      if (result.ok === false) throw new Error("language sync failed");
-    } catch (_) { if (locale() === language) toast(t("界面语言已切换；系统通知语言暂未同步。")); }
+      while (languageRequest) {
+        const request = languageRequest;
+        if (!state.connected || request.session !== state.session) { languageRequest = null; break; }
+        try {
+          const response = await fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json", "X-Redbag-Key": request.token }, body: JSON.stringify({ action: "language", language: request.language }), signal: AbortSignal.timeout(5000) });
+          if (!response.ok || (await response.json()).ok !== true) throw new Error("language sync failed");
+        } catch (_) { if (languageRequest === request) toast(t("界面语言已切换；系统通知语言暂未同步。")); }
+        finally {
+          languageRevision += 1;
+          if (languageRequest === request) languageRequest = null;
+        }
+      }
+    } finally { languageSyncing = false; }
   }
 
-  function changeLanguage(code) {
-    if (!window.I18N.setLanguage(code)) return;
+  function applyLanguage(code) {
+    if (!window.I18N.setLanguage(code)) return false;
     window.I18N.apply(); $("language-select").value = locale();
     state.mapKey = ""; state.listKey = "";
     renderMaps(); renderRecords(true); renderClock(); renderConnection();
     if (activeAlert && !$("alert-banner").hidden) renderAlert(activeAlert);
     if (!$("toast").hidden) $("toast").textContent = localizedDetail($("toast").textContent);
-    requestPaint(); syncLanguage();
+    requestPaint();
+    return true;
   }
 
-  async function poll() { clearTimeout(pollTimer); try { const response = await fetch("/api/state", { cache: "no-store", signal: AbortSignal.timeout(3500) }); if (!response.ok) throw new Error(`HTTP ${response.status}`); const data = await response.json(); acceptData(data); } catch (_) { state.connected = false; renderConnection(); renderPlayer(); renderSelected(); requestPaint(); } finally { pollTimer = setTimeout(poll, state.connected ? 750 : 1800); } }
+  function changeLanguage(code) {
+    if (!applyLanguage(code)) return;
+    languageRevision += 1;
+    languageRequest = state.connected && state.data?.control_token && window.I18N.languages.includes(state.data.language)
+      ? { language: code, session: state.session, token: state.data.control_token } : null;
+    syncLanguage();
+  }
+
+  async function poll() { clearTimeout(pollTimer); const languageVersion = languageRevision; try { const response = await fetch("/api/state", { cache: "no-store", signal: AbortSignal.timeout(3500) }); if (!response.ok) throw new Error(`HTTP ${response.status}`); const data = await response.json(); acceptData(data, languageVersion); } catch (_) { state.connected = false; renderConnection(); renderPlayer(); renderSelected(); requestPaint(); } finally { pollTimer = setTimeout(poll, state.connected ? 750 : 1800); } }
   async function control(action, extra = {}) {
     if (!state.connected || state.busy || !state.data?.control_token) { toast(t("工具尚未连接，请等待本地连接恢复。")); return false; }
     state.busy = true; renderConnection();
-    try { const response = await fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json", "X-Redbag-Key": state.data.control_token }, body: JSON.stringify({ action, ...extra }), signal: AbortSignal.timeout(5000) }); const result = await response.json(); if (!response.ok || result.ok === false) throw new Error(result.error || t("操作未完成")); if (result.maps && result.capture) acceptData(result); else { const fresh = await fetch("/api/state", { cache: "no-store", signal: AbortSignal.timeout(3500) }); if (fresh.ok) acceptData(await fresh.json()); } return true; } catch (error) { if (action === "shutdown") { toast(t("已发送退出请求。连接关闭后，接收和提醒会停止。")); state.connected = false; } else toast(t("操作未完成：{reason}", { reason: localizedDetail(error.message) })); return false; } finally { state.busy = false; renderConnection(); }
+    const languageVersion = languageRevision;
+    try { const response = await fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json", "X-Redbag-Key": state.data.control_token }, body: JSON.stringify({ action, ...extra }), signal: AbortSignal.timeout(5000) }); const result = await response.json(); if (!response.ok || result.ok === false) throw new Error(result.error || t("操作未完成")); if (result.maps && result.capture) acceptData(result, languageVersion); else { const freshLanguageVersion = languageRevision, fresh = await fetch("/api/state", { cache: "no-store", signal: AbortSignal.timeout(3500) }); if (fresh.ok) acceptData(await fresh.json(), freshLanguageVersion); } return true; } catch (error) { if (action === "shutdown") { toast(t("已发送退出请求。连接关闭后，接收和提醒会停止。")); state.connected = false; } else toast(t("操作未完成：{reason}", { reason: localizedDetail(error.message) })); return false; } finally { state.busy = false; renderConnection(); }
   }
 
   $("zoom-in").addEventListener("click", () => zoom(1.5)); $("zoom-out").addEventListener("click", () => zoom(1 / 1.5)); $("fit-button").addEventListener("click", () => { setFollowPlayer(false); fitMap(); });

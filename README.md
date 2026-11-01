@@ -2,7 +2,7 @@
 
 用于 AION2 的本地红色背包记录与地图提醒工具。收到本机游戏连接中的背包记录后，显示坐标、提示新记录，并根据后续事件更新交互、开启或未知状态。
 
-**版本：1.4.1 · Windows 桌面 · 原创代码与原创数据使用 MIT 许可证**
+**版本：1.4.2 · Windows 桌面 · 原创代码与原创数据使用 MIT 许可证**
 
 [English](README.en.md) · [架构](docs/architecture.md) · [数据与素材](docs/data-and-assets.md) · [构建与发布](docs/releasing.md)
 
@@ -11,6 +11,7 @@
 ## 能做什么
 
 - 用一个桌面管理窗口开始或停止接收，打开悬浮地图、网页地图、历史记录和数据目录。
+- 控制面板右上角可切换简体中文、English、日本語、한국어；地图和提醒同步切换，重启后保留选择。未开始接收时也可设置语言。
 - 深色桌面界面与原生高 DPI 绘制；悬浮地图使用清晰描边图标区分背包、即将刷新、已开启和候选点，并提供图例和距离尺。
 - 新红色背包触发声音与系统通知，并在地图上选中目标。
 - 新目标保留近景；跟随模式保持角色参考点居中，远处目标显示画面边缘箭头。
@@ -28,7 +29,7 @@
 
 ## 普通用户使用
 
-1. 将 `AION2-RedBag-Map-1.4.1-windows-x64.zip` 完整解压。
+1. 将 `AION2-RedBag-Map-1.4.2-windows-x64.zip` 完整解压。
 2. 打开解压后的 `AION2 RedBag Map` 文件夹，双击 **`AION2 RedBag Map.exe`**，保留旁边的 `_internal` 文件夹。
 3. 管理窗口启动后默认不接收游戏数据。需要实时提醒时，运行游戏并点击“开始实时接收”。
 4. 点击“显示悬浮地图”或“打开完整地图”。发现新记录时会提示；点击目标可查看坐标与当前记录状态。
@@ -71,8 +72,8 @@ py -3.12 -m venv .venv
 构建输出位于 `dist/`：
 
 - `AION2 RedBag Map/AION2 RedBag Map.exe` 与 `_internal/`：可直接运行的单目录版本。
-- `AION2-RedBag-Map-1.4.1-windows-x64.zip`：完整 Windows 包。
-- `aion2-redbag-map-1.4.1-source.zip`：源码包。
+- `AION2-RedBag-Map-1.4.2-windows-x64.zip`：完整 Windows 包。
+- `aion2-redbag-map-1.4.2-source.zip`：源码包。
 - `SHA256SUMS.txt`：上述两个 ZIP 的 SHA-256。
 
 Windows 包的 `_internal/` 内还包含本次构建对应的源码、公开数据、构建信息和实际依赖许可。构建不会发布或上传 GitHub。具体布局与检查方法见 [构建与发布](docs/releasing.md)。

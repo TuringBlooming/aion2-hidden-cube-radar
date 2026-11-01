@@ -15,14 +15,17 @@ import webbrowser
 
 from . import __version__
 from .history_store import atomic_write
+from .localization import DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES, validate_language
 
 APPLICATION_ID = "aion2-redbag-map"
-NPCAP_URL = "https://npcap.com/"
 WORKERS = {"service": "app", "overlay": "overlay", "archive": "git_archive"}
 
 
 class DesktopError(RuntimeError):
     """A user-readable local application error, never containing a control token."""
+    def __init__(self, message, *, key=None):
+        super().__init__(message)
+        self.key = key
 
 
 class ServiceCollision(DesktopError):
@@ -113,9 +116,14 @@ class LocalClient:
         data = self._request(self.url + "/api/state")
         return self.validate(data) if data is not None else None
 
-    def control(self, action, *, expected_pid=None):
-        if action not in ("pause", "resume", "shutdown"):
+    def control(self, action, *, expected_pid=None, language=None):
+        if action not in ("pause", "resume", "shutdown", "language"):
             raise ValueError("unsupported desktop control")
+        body = {"action": action}
+        if action == "language":
+            body["language"] = validate_language(language)
+        elif language is not None:
+            raise ValueError("language is only valid for the language action")
         data = self.snapshot()
         if data is None:
             raise DesktopError("本机地图已停止，请重新开始。")
@@ -125,7 +133,7 @@ class LocalClient:
         if not isinstance(token, str) or not token:
             raise DesktopError("已有地图不支持安全控制，请先关闭旧版本。")
         request = Request(self.url + "/api/control", method="POST",
-                          data=json.dumps({"action": action}).encode("utf-8"),
+                          data=json.dumps(body).encode("utf-8"),
                           headers={"Content-Type": "application/json", "X-Redbag-Key": token,
                                    "Origin": self.url})
         result = self._request(request)
@@ -146,6 +154,41 @@ class RuntimeController:
         self.clock, self.sleep = clock or time.monotonic, sleep or time.sleep
         self.service = None
         self.overlay = None
+        self.language = self._load_language()
+        self.language_save_error = False
+
+    def _load_language(self):
+        # Read preferences only; never rewrite history from the manager. A later
+        # web-map change in history takes precedence over an older desktop choice.
+        choices = []
+        for name in ("history.json", "desktop-settings.json"):
+            path = self.directory / name
+            try:
+                data = json.loads(path.read_text("utf-8"))
+                value = data.get("language") if isinstance(data, dict) else None
+                if value in SUPPORTED_LANGUAGES:
+                    choices.append((path.stat().st_mtime_ns, value))
+            except (OSError, ValueError):
+                pass
+        return max(choices, default=(0, DEFAULT_LANGUAGE))[1]
+
+    def _remember_language(self, language):
+        self.language = validate_language(language)
+        try:
+            self.directory.mkdir(parents=True, exist_ok=True)
+            atomic_write(self.directory / "desktop-settings.json",
+                         json.dumps({"language": self.language}).encode("utf-8"))
+        except OSError as exc:
+            self.language_save_error = True
+            raise DesktopError("语言设置未能保存，请检查数据目录是否可写。", key="language_save_error") from exc
+        self.language_save_error = False
+
+    def set_language(self, language):
+        language = validate_language(language)
+        state = self.client.snapshot()
+        if state is not None:
+            self.client.control("language", expected_pid=state["process_id"], language=language)
+        self._remember_language(language)
 
     def _spawn(self, kind, args):
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -177,6 +220,9 @@ class RuntimeController:
                 if state:
                     if state["process_id"] != self.service.pid:
                         raise ServiceCollision("另一份地图先启动了；本次启动已取消，已有服务保持运行。")
+                    if state.get("language", DEFAULT_LANGUAGE) != self.language:
+                        self.client.control("language", expected_pid=self.service.pid, language=self.language)
+                        state = dict(state, language=self.language)
                     return state
                 self.sleep(.1)
             raise DesktopError("地图启动超时。请查看数据目录中的 desktop-worker.log。")
@@ -195,7 +241,7 @@ class RuntimeController:
         if state and state.get("mode") == "live" and not state.get("paused") and not failed:
             return state
         if not self.driver_check():
-            raise NpcapMissing("未找到 Npcap，暂时不能实时接收。仍可浏览地图和历史；可点击 Npcap 官方网站了解安装。")
+            raise NpcapMissing("未找到接收组件，暂时不能实时接收，仍可浏览地图和历史。")
         if state and state.get("mode") == "live" and not failed:
             self.client.control("resume")
             return self.client.snapshot()
@@ -253,7 +299,14 @@ class RuntimeController:
     def status(self):
         state = self.client.snapshot()
         capture = state.get("capture", {}) if state else {}
+        language = state.get("language") if state else None
+        if language in SUPPORTED_LANGUAGES and (language != self.language or self.language_save_error):
+            try:
+                self._remember_language(language)
+            except DesktopError:
+                pass  # A preference write failure must not hide reception status.
         return {"connected": state is not None, "version": __version__,
+                "language": self.language, "language_save_error": self.language_save_error,
                 "mode": state.get("mode") if state else None,
                 "paused": bool(state and state.get("paused")),
                 "phase": capture.get("phase"), "detail": capture.get("detail", ""),
@@ -310,7 +363,8 @@ class RuntimeController:
 def self_check(output):
     """A local packaging check: imports only, with no GUI, workers, or collection."""
     modules = {}
-    for name in ("aion2_redbag_map.app", "aion2_redbag_map.overlay", "aion2_redbag_map.git_archive",
+    for name in ("aion2_redbag_map.app", "aion2_redbag_map.desktop", "aion2_redbag_map.desktop_text",
+                 "aion2_redbag_map.overlay", "aion2_redbag_map.git_archive",
                  "aion2_redbag_map.resources", "tkinter", "PIL.Image"):
         try:
             importlib.import_module(name)

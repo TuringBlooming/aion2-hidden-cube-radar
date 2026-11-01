@@ -16,6 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from aion2_redbag_map import __version__
 from aion2_redbag_map.__main__ import main
 from aion2_redbag_map.desktop import DesktopWindow, run
+from aion2_redbag_map.desktop_text import TEXT as DESKTOP_TEXT, text as desktop_text
+from aion2_redbag_map.localization import SUPPORTED_LANGUAGES
 from aion2_redbag_map.runtime import (APPLICATION_ID, DesktopError, LocalClient, NpcapMissing,
                                      NoRedirect, RuntimeController, ServiceCollision, worker_command)
 
@@ -60,12 +62,14 @@ class FakeClient:
     def snapshot(self):
         return copy.deepcopy(self.value)
 
-    def control(self, action, *, expected_pid=None):
+    def control(self, action, *, expected_pid=None, language=None):
         if expected_pid is not None and self.value["process_id"] != expected_pid:
             raise ServiceCollision("replacement")
         self.controls.append((action, expected_pid))
         if action == "shutdown":
             self.value = None
+        elif action == "language":
+            self.value["language"] = language
         else:
             self.value["paused"] = action == "pause"
         return {"ok": True}
@@ -283,6 +287,20 @@ class DesktopControllerTests(unittest.TestCase):
 
 
 class LocalClientTests(unittest.TestCase):
+    def test_language_control_is_validated_before_accessing_the_service(self):
+        with tempfile.TemporaryDirectory() as directory:
+            client = LocalClient(49173, Path(directory))
+            with patch.object(client, "snapshot", return_value=state(Path(directory))) as snapshot:
+                with patch.object(client, "_request", return_value={"ok": True}) as request:
+                    client.control("language", language="ja", expected_pid=900)
+                    body = json.loads(request.call_args.args[0].data)
+                    self.assertEqual(body, {"action": "language", "language": "ja"})
+                    snapshot.reset_mock()
+                    for action, language in (("language", "unsupported"), ("pause", "en")):
+                        with self.assertRaises(ValueError):
+                            client.control(action, language=language)
+                    snapshot.assert_not_called()
+
     def test_closed_loopback_port_returns_none_without_starting_a_process(self):
         # On Windows a refused localhost connection can take about two seconds.
         # Exercise the real refusal path so a shorter HTTP timeout cannot mask it.
@@ -358,6 +376,130 @@ class LocalClientTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join(2)
+
+
+class DesktopLanguageTests(unittest.TestCase):
+    def test_offline_preference_survives_restart_without_touching_history_or_starting_workers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            history = root / "history.json"
+            original = b'{"schema":1,"language":"ja","records":[{"id":"keep-me"}]}'
+            history.write_bytes(original)
+            os.utime(history, (1, 1))
+            client = FakeClient(root)
+            factory = Mock(side_effect=AssertionError("language must not start workers"))
+            controller = RuntimeController(data_dir=root, client=client, process_factory=factory)
+            self.assertEqual(controller.language, "ja")
+            controller.set_language("en")
+            restarted = RuntimeController(data_dir=root, client=client, process_factory=factory)
+            self.assertEqual(restarted.status()["language"], "en")
+            self.assertEqual(history.read_bytes(), original)
+            factory.assert_not_called()
+            self.assertEqual(client.controls, [])
+            history.write_text('{"language":"ko"}', encoding="utf-8")
+            os.utime(history, (2_000_000_000, 2_000_000_000))
+            self.assertEqual(RuntimeController(data_dir=root, client=client).language, "ko")
+
+    def test_live_changes_use_authenticated_control_and_external_changes_are_remembered(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            client = FakeClient(root, state(root, language="zh-CN", mode="live"))
+            controller = RuntimeController(data_dir=root, client=client)
+            controller.set_language("ko")
+            self.assertEqual(client.controls, [("language", 900)])
+            self.assertEqual(client.value["language"], "ko")
+            self.assertFalse(client.value["paused"])
+            client.value["language"] = "ja"
+            self.assertEqual(controller.status()["language"], "ja")
+            self.assertEqual(json.loads((root / "desktop-settings.json").read_text())["language"], "ja")
+            self.assertNotIn("control_token", controller.status())
+
+    def test_saved_offline_choice_reaches_a_new_history_service(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            client = FakeClient(root)
+            factory = FakeFactory(client)
+            controller = RuntimeController(data_dir=root, client=client, process_factory=factory, sleep=lambda _: None)
+            controller.set_language("en")
+            result = controller.ensure_history()
+            self.assertEqual(result["language"], "en")
+            self.assertIn("--no-capture", factory.calls[0][0])
+            self.assertEqual(client.controls, [("language", factory.processes[0].pid)])
+            controller.close()
+
+    def test_failed_control_does_not_persist_an_unapplied_choice(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            client = FakeClient(root, state(root, language="zh-CN"))
+            controller = RuntimeController(data_dir=root, client=client)
+            with patch.object(client, "control", side_effect=DesktopError("rejected")):
+                with self.assertRaises(DesktopError):
+                    controller.set_language("ko")
+            self.assertEqual(controller.language, "zh-CN")
+            self.assertFalse((root / "desktop-settings.json").exists())
+
+    def test_preference_write_error_does_not_hide_live_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            client = FakeClient(root, state(root, language="en", mode="live"))
+            controller = RuntimeController(data_dir=root, client=client)
+            with patch("aion2_redbag_map.runtime.atomic_write", side_effect=PermissionError("read only")):
+                status = controller.status()
+            self.assertTrue(status["connected"])
+            self.assertEqual(status["language"], "en")
+            self.assertTrue(status["language_save_error"])
+            self.assertFalse(controller.status()["language_save_error"])
+
+    @unittest.skipUnless(os.name == "nt", "Native Windows font and DPI layout")
+    def test_native_language_switch_and_layout_at_supported_dpi_scales(self):
+        import tkinter as tk
+        from aion2_redbag_map.ui_theme import enable_dpi_awareness
+        enable_dpi_awareness()
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            for scale in (1, 1.25, 1.5, 2):
+                with self.subTest(scale=scale):
+                    root = tk.Tk()
+                    root.withdraw()
+                    root.tk.call("tk", "scaling", scale * 96 / 72)
+                    client = FakeClient(folder, state(folder, language="zh-CN", mode="live"))
+                    controller = RuntimeController(data_dir=folder, client=client, driver_check=lambda: True)
+                    try:
+                        with patch("tkinter.Tk", return_value=root), patch("aion2_redbag_map.ui_theme.ui_scale", return_value=scale):
+                            window = DesktopWindow(controller)
+                        for timer in root.tk.call("after", "info"):
+                            root.after_cancel(timer)
+                        root.geometry(f"{window.px(760)}x{window.px(640)}-20000-20000")
+                        root.attributes("-alpha", 0)
+                        root.deiconify()
+                        root.update()
+                        for language in SUPPORTED_LANGUAGES:
+                            client.value["language"] = language
+                            window.apply_status(controller.status())
+                            root.update_idletasks()
+                            self.assertEqual(window.language_select.current(), SUPPORTED_LANGUAGES.index(language))
+                            self.assertEqual(window.start_button.cget("text"), desktop_text("start", language))
+                            for widget, key in window.localized_widgets:
+                                self.assertEqual(widget.cget("text"), DESKTOP_TEXT[key][SUPPORTED_LANGUAGES.index(language)])
+                                self.assertLessEqual(widget.winfo_reqwidth(), widget.winfo_width() + 2, (scale, language, key, "clipped"))
+                                self.assertLessEqual(widget.winfo_rooty() + widget.winfo_height(), root.winfo_rooty() + root.winfo_height(), (scale, language, key, "outside window"))
+                            self.assertFalse(hasattr(window, "driver_link"))
+                        window.language_select.current(1)
+                        with patch.object(window, "perform") as perform:
+                            window.language_select.event_generate("<<ComboboxSelected>>")
+                            root.update()
+                            perform.assert_called_once()
+                            self.assertEqual(window.start_button.cget("text"), desktop_text("start", "en"))
+                            window.apply_status(controller.status())
+                            self.assertEqual(window.language, "en", "An old status must not undo the pending choice")
+                            perform.call_args.args[0]()
+                        window.pending_language = None
+                        window.apply_status(controller.status())
+                        self.assertEqual(window.language, "en")
+                        self.assertEqual(client.value["language"], "en")
+                        self.assertFalse(client.value["paused"])
+                    finally:
+                        root.destroy()
 
 
 class ExplicitStartupTests(unittest.TestCase):

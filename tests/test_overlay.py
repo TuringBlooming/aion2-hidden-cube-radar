@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from aion2_redbag_map import __version__
 from aion2_redbag_map.overlay import (DesktopOverlay, NoRedirect, OverlayLock, OverlayState, approximate_distance,
                      bag_focus_scale, target_indicator, display_status, latest_time, load_candidates, load_settings, local_clock, main,
                      player_reference, queue_latest_event, render_map_frame, TILE_CACHE_LIMIT,
@@ -574,7 +575,7 @@ class OverlayModelTests(unittest.TestCase):
         self.assertEqual(status["player_observed_at"], 12000)
         self.assertEqual(status["player_map_id"], 1110)
         self.assertEqual((status["cx"], status["cy"]), (view.cx, view.cy))
-        self.assertEqual(status["overlay_version"], "1.4.1")
+        self.assertEqual(status["overlay_version"], __version__)
         self.assertEqual(status["poll_interval_ms"], 200)
         self.assertEqual(status["ui_tick_ms"], 100)
         self.assertEqual(status["base_map_mode"], "overview")
