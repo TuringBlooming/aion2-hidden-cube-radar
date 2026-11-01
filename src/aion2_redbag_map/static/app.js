@@ -99,9 +99,10 @@
   }
   function renderPlayer() {
     const player = playerPosition(), local = playerOnMap();
+    const phase = state.data?.position_diagnostics?.state;
     const key = JSON.stringify([locale(), local?.x, local?.y, local?.z, local?.observed_at, local?.stale, state.followPlayer]);
     if (key !== state.playerRenderKey) { state.playerRenderKey = key; requestPaint(); }
-    $("player-status").textContent = !player ? t("等待地图与角色参考位置") : !local ? t("角色参考位置在{map}", { map: mapName(state.maps.find(map => String(map.id) === String(player.map_id)) || { id: player.map_id }) }) : local.stale ? t("位置已过期，等待新记录") : t("角色参考位置");
+    $("player-status").textContent = phase === "awaiting_map" ? t("地图待确认，切换线路后恢复定位") : phase === "awaiting_stream" ? t("等待连接恢复，恢复后自动更新定位") : !player ? t("等待地图与角色参考位置") : !local ? t("角色参考位置在{map}", { map: mapName(state.maps.find(map => String(map.id) === String(player.map_id)) || { id: player.map_id }) }) : local.stale ? t("位置已过期，等待新记录") : t("角色参考位置");
     $("player-age").textContent = local ? t("最近位置 · {age}", { age: ageLabel(local.observed_at) }) : "";
     $("player-coordinates").textContent = local ? `X ${number(local.x)} · Y ${number(local.y)} · Z ${number(local.z)}` : "";
     $("player-bar").classList.toggle("stale", !!local?.stale);

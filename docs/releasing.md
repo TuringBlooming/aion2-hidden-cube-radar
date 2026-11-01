@@ -1,6 +1,6 @@
 # 构建与发布
 
-目标是让一个 Windows 桌面入口、对应源码和构建步骤可以互相核对。当前版本为 1.4.0。构建只生成本地产物，不自动创建仓库、上传 Release 或发布数据。
+目标是让一个 Windows 桌面入口、对应源码和构建步骤可以互相核对。当前版本为 1.4.1。构建只生成本地产物，不自动创建仓库、上传 Release 或发布数据。
 
 ## 环境
 
@@ -26,7 +26,7 @@ node tests/test_refresh_ui.cjs
 .venv/Scripts/python.exe scripts/verify_package.py
 ```
 
-构建输出为 `dist/AION2 RedBag Map/`、`dist/AION2-RedBag-Map-1.4.0-windows-x64.zip`、`dist/aion2-redbag-map-1.4.0-source.zip`，以及记录两个 ZIP 哈希的 `dist/SHA256SUMS.txt`。构建依赖以 [requirements-build.txt](../requirements-build.txt) 为准；版本由源码包元数据维护。若某项测试需要特定平台或依赖，应区分通过、跳过和未运行，不能把跳过记录写成运行通过。
+构建输出为 `dist/AION2 RedBag Map/`、`dist/AION2-RedBag-Map-1.4.1-windows-x64.zip`、`dist/aion2-redbag-map-1.4.1-source.zip`，以及记录两个 ZIP 哈希的 `dist/SHA256SUMS.txt`。构建依赖以 [requirements-build.txt](../requirements-build.txt) 为准；版本由源码包元数据维护。若某项测试需要特定平台或依赖，应区分通过、跳过和未运行，不能把跳过记录写成运行通过。
 
 测试采用合成夹具和本地状态，不应默认启动真实游戏接收、访问个人历史或下载第三方素材。需要真实游戏验证时，应单独记录版本、环境及实际验证范围。
 
@@ -56,7 +56,7 @@ dist/AION2 RedBag Map/
     └── 运行依赖与程序资源
 ```
 
-完整目录压缩为 Windows ZIP 后分发，解压得到 `AION2 RedBag Map/` 文件夹，不把 EXE 单独拿出。源码 ZIP 的顶层目录为 `aion2-redbag-map-1.4.0/`。这个布局使用 [PyInstaller 的单目录模式](https://pyinstaller.org/en/stable/operating-mode.html#bundling-to-one-folder)，普通用户不需要 Python。构建目标与运行平台对应；在 Windows 上验证 Windows 产物。
+完整目录压缩为 Windows ZIP 后分发，解压得到 `AION2 RedBag Map/` 文件夹，不把 EXE 单独拿出。源码 ZIP 的顶层目录为 `aion2-redbag-map-1.4.1/`。这个布局使用 [PyInstaller 的单目录模式](https://pyinstaller.org/en/stable/operating-mode.html#bundling-to-one-folder)，普通用户不需要 Python。构建目标与运行平台对应；在 Windows 上验证 Windows 产物。
 
 `build-info.json` 记录版本、构建时间、Python 与依赖版本，以及源码文件哈希。`_internal/SHA256SUMS.txt` 记录包内文件的哈希，`dist/SHA256SUMS.txt` 记录最终两个 ZIP 的哈希。构建脚本同时核对候选点、公开观测、坐标标定和来源清单的字节一致性，并按 `map-source.json` 验证全部 339 张地图图片。
 

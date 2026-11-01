@@ -574,7 +574,7 @@ class OverlayModelTests(unittest.TestCase):
         self.assertEqual(status["player_observed_at"], 12000)
         self.assertEqual(status["player_map_id"], 1110)
         self.assertEqual((status["cx"], status["cy"]), (view.cx, view.cy))
-        self.assertEqual(status["overlay_version"], "1.4.0")
+        self.assertEqual(status["overlay_version"], "1.4.1")
         self.assertEqual(status["poll_interval_ms"], 200)
         self.assertEqual(status["ui_tick_ms"], 100)
         self.assertEqual(status["base_map_mode"], "overview")

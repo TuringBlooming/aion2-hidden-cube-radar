@@ -2,7 +2,7 @@
 
 用于 AION2 的本地红色背包记录与地图提醒工具。收到本机游戏连接中的背包记录后，显示坐标、提示新记录，并根据后续事件更新交互、开启或未知状态。
 
-**版本：1.4.0 · Windows 桌面 · 原创代码与原创数据使用 MIT 许可证**
+**版本：1.4.1 · Windows 桌面 · 原创代码与原创数据使用 MIT 许可证**
 
 [English](README.en.md) · [架构](docs/architecture.md) · [数据与素材](docs/data-and-assets.md) · [构建与发布](docs/releasing.md)
 
@@ -24,9 +24,11 @@
 
 角色位置来自间歇收到的参考坐标，**10 秒后过期**，不是连续定位。过期时不显示实时距离；画面边缘箭头表示目标相对于当前地图画面的方向。
 
+同一连接暂时没有数据时保留已确认地图，新记录到达后自动恢复定位。真正断开、更换连接或重新启动工具后，若显示“地图待确认”，正常切换一次线路或地图即可重新确认；浏览世界地图本身不作为角色地图的证据。
+
 ## 普通用户使用
 
-1. 将 `AION2-RedBag-Map-1.4.0-windows-x64.zip` 完整解压。
+1. 将 `AION2-RedBag-Map-1.4.1-windows-x64.zip` 完整解压。
 2. 打开解压后的 `AION2 RedBag Map` 文件夹，双击 **`AION2 RedBag Map.exe`**，保留旁边的 `_internal` 文件夹。
 3. 管理窗口启动后默认不接收游戏数据。需要实时提醒时，运行游戏并点击“开始实时接收”。
 4. 点击“显示悬浮地图”或“打开完整地图”。发现新记录时会提示；点击目标可查看坐标与当前记录状态。
@@ -69,8 +71,8 @@ py -3.12 -m venv .venv
 构建输出位于 `dist/`：
 
 - `AION2 RedBag Map/AION2 RedBag Map.exe` 与 `_internal/`：可直接运行的单目录版本。
-- `AION2-RedBag-Map-1.4.0-windows-x64.zip`：完整 Windows 包。
-- `aion2-redbag-map-1.4.0-source.zip`：源码包。
+- `AION2-RedBag-Map-1.4.1-windows-x64.zip`：完整 Windows 包。
+- `aion2-redbag-map-1.4.1-source.zip`：源码包。
 - `SHA256SUMS.txt`：上述两个 ZIP 的 SHA-256。
 
 Windows 包的 `_internal/` 内还包含本次构建对应的源码、公开数据、构建信息和实际依赖许可。构建不会发布或上传 GitHub。具体布局与检查方法见 [构建与发布](docs/releasing.md)。

@@ -27,6 +27,8 @@ TEXT = {
     "following": ("跟随：开", "Follow: on", "追従：オン", "따라가기: 켜짐"),
     "follow_waiting": ("等待定位", "Awaiting position", "位置を待機", "위치 대기"),
     "player_waiting": ("角色参考位置 · 尚未收到", "Reference position · Not observed", "参考位置 · 未受信", "참고 위치 · 미수신"),
+    "player_map_waiting": ("地图待确认 · 切换线路后恢复", "Map unconfirmed · Change channel", "マップ未確認 · チャンネル切替", "지도 확인 대기 · 채널 변경"),
+    "player_syncing": ("等待连接恢复", "Waiting for connection recovery", "接続の復帰を待機", "연결 복구 대기"),
     "player_age": ("角色参考位置 · {seconds} 秒前", "Reference position · {seconds}s ago", "参考位置 · {seconds}秒前", "참고 위치 · {seconds}초 전"),
     "player_expired": ("角色参考位置已过期 · {seconds} 秒前", "Reference expired · {seconds}s ago", "参考位置は期限切れ · {seconds}秒前", "참고 위치 만료 · {seconds}초 전"),
     "player_short": ("角色参考点", "Reference", "参考点", "참고점"),

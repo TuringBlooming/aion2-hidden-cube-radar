@@ -2,7 +2,7 @@
 
 A local Windows tool that records red hidden bags observed in the game's incoming connection data, marks their coordinates, and updates their interaction or opened state when further events arrive.
 
-**Version 1.4.0 · Windows desktop · MIT for original code and original data**
+**Version 1.4.1 · Windows desktop · MIT for original code and original data**
 
 [中文](README.md) · [Architecture](docs/architecture.md) · [Data and assets](docs/data-and-assets.md) · [Building and releasing](docs/releasing.md)
 
@@ -25,9 +25,11 @@ This is an independent project with no official endorsement. It only shows obser
 
 Character coordinates are intermittent references. They expire after **10 seconds** and are not continuous tracking. Expired references do not produce live distance estimates. An edge arrow describes the target's direction relative to the current map view.
 
+A temporary quiet period on the same connection preserves its confirmed map; new observations resume positioning automatically. After a real disconnect, replacement connection or app restart, “Map unconfirmed” means a normal channel or map change is needed to confirm the current map again. Browsing the world map is not used as evidence of the character's map.
+
 ## Using the Windows package
 
-1. Extract `AION2-RedBag-Map-1.4.0-windows-x64.zip` completely.
+1. Extract `AION2-RedBag-Map-1.4.1-windows-x64.zip` completely.
 2. Open its `AION2 RedBag Map` folder, run **`AION2 RedBag Map.exe`**, and keep `_internal/` beside it.
 3. The manager does not start capture automatically. Run the game and choose **开始实时接收** (Start live receiving) when you want live observations.
 4. Choose **显示悬浮地图** (Show overlay) or **打开完整地图** (Open full map). Select a target to inspect its coordinates and recorded state.
@@ -66,8 +68,8 @@ This opens the same manager without starting capture. Calling the virtual enviro
 Artifacts are written under `dist/`:
 
 - `AION2 RedBag Map/AION2 RedBag Map.exe` and `_internal/`: the runnable directory.
-- `AION2-RedBag-Map-1.4.0-windows-x64.zip`: the complete Windows package.
-- `aion2-redbag-map-1.4.0-source.zip`: the source archive.
+- `AION2-RedBag-Map-1.4.1-windows-x64.zip`: the complete Windows package.
+- `aion2-redbag-map-1.4.1-source.zip`: the source archive.
 - `SHA256SUMS.txt`: checksums for both ZIP files.
 
 The Windows package also includes its corresponding source, public datasets, build information, and actual dependency licenses under `_internal/`. Building does not publish or upload a release. See [the release guide](docs/releasing.md).

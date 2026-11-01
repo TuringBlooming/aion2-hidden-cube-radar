@@ -77,6 +77,10 @@ class MapState:
         self._player_reset_at = {}
         self._player_reset_all_at = 0
         self._map_observed_at = 0
+        self.position_diagnostics = {"received": 0, "accepted": 0, "rejected": 0,
+                                     "last_received_at": None, "last_accepted_at": None,
+                                     "last_rejection": None, "map_invalidated_at": None,
+                                     "map_invalidation_reason": None}
         self.paused = False
         self.sound = True
         self.language = DEFAULT_LANGUAGE
@@ -269,25 +273,40 @@ class MapState:
     def _player_position(self, event, connection, at):
         # Position is transient and belongs only to a confirmed current map/flow.
         # A manually browsed map is never evidence of the character's location.
-        if (self.paused or self.mode != "live" or self.capture.get("phase") != "observing"
-                or self.map_source != "detected" or self.map_connection != connection
-                or self.flow_maps.get(connection) != self.current_map_id
-                or at < max(self._map_observed_at, self._player_reset_all_at,
-                            self._player_reset_at.get(connection, 0))):
-            return
+        diagnostics = self.position_diagnostics
+        diagnostics["received"] += 1
+        diagnostics["last_received_at"] = max(diagnostics["last_received_at"] or 0, at)
+
+        def reject(reason):
+            diagnostics["rejected"] += 1
+            diagnostics["last_rejection"] = reason
+
+        if self.paused or self.mode != "live":
+            return reject("inactive")
+        if self.map_source != "detected" or self.map_connection is None:
+            return reject("map_unconfirmed")
+        if self.map_connection != connection or self.flow_maps.get(connection) != self.current_map_id:
+            return reject("different_connection")
+        if self.capture.get("phase") != "observing":
+            return reject("awaiting_stream")
+        if at < max(self._map_observed_at, self._player_reset_all_at, self._player_reset_at.get(connection, 0)):
+            return reject("before_reset")
         if event.get("source") != "self_status" or event.get("identity_source") != "stats_consensus":
-            return
+            return reject("unconfirmed_identity")
         if not all(type(event.get(c)) in (int, float) and math.isfinite(event[c])
                    and abs(event[c]) <= 1_000_000 for c in ("x", "y", "z")):
-            return
+            return reject("invalid_coordinates")
         if self.player and at < self.player["observed_at"]:
-            return
+            return reject("out_of_order")
         # Several ordered subframes can share one packet timestamp.
         self.player = {c: float(event[c]) for c in ("x", "y", "z")}
         self.player.update(map_id=self.current_map_id, observed_at=at,
                            expires_at=at + PLAYER_POSITION_SECONDS,
                            source="self_status", identity_source="stats_consensus")
         self._player_connection = connection
+        diagnostics["accepted"] += 1
+        diagnostics["last_accepted_at"] = at
+        diagnostics["last_rejection"] = None
 
     def _player_snapshot(self, now):
         if (not self.player or self.paused or self.map_source != "detected"
@@ -295,6 +314,20 @@ class MapState:
                 or self.player["map_id"] != self.current_map_id):
             return None
         return dict(self.player, stale=now >= self.player["expires_at"])
+
+    def _position_diagnostics_snapshot(self, now):
+        player = self._player_snapshot(now)
+        if self.mode != "live" or self.paused:
+            phase = "inactive"
+        elif self.map_source != "detected":
+            phase = "awaiting_map"
+        elif self.capture.get("phase") != "observing":
+            phase = "awaiting_stream"
+        elif player:
+            phase = "stale" if player["stale"] else "tracking"
+        else:
+            phase = "awaiting_position"
+        return dict(self.position_diagnostics, state=phase)
 
     def _invalidate(self, connection_id=None, reason="连接中断，当前状态未知", at=None):
         at = at or time.time()
@@ -377,6 +410,7 @@ class MapState:
                 if self.map_connection == connection:
                     self.map_source = "manual"
                     self.map_connection = None
+                    self.position_diagnostics.update(map_invalidated_at=at, map_invalidation_reason=reason)
                 return
             if kind == "map":
                 # A response about a browsed map does not locate the player's character.
@@ -399,6 +433,7 @@ class MapState:
                 self.current_map_id = map_id
                 self.map_source = "detected"
                 self.map_connection = connection
+                self.position_diagnostics.update(map_invalidated_at=None, map_invalidation_reason=None)
                 self._save()
                 return
             if self.paused:
@@ -523,6 +558,7 @@ class MapState:
                       "selected_map_id": self.selected_map_id, "current_map_id": self.current_map_id,
                       "map_source": self.map_source, "capture": dict(self.capture),
                       "player": self._player_snapshot(now),
+                      "position_diagnostics": self._position_diagnostics_snapshot(now),
                       "paused": self.paused, "sound": self.sound, "language": self.language,
                       "supported_languages": list(SUPPORTED_LANGUAGES),
                       "records": [self._display_record(r, now) for r in

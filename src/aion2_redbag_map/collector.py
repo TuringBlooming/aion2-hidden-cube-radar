@@ -19,6 +19,8 @@ import uuid
 
 from .protocol import TcpStream, parse_tcp, read_pcap
 
+STREAM_IDLE_SECONDS = 10
+
 
 class PcapIf(C.Structure):
     pass
@@ -310,10 +312,22 @@ class Collector:
         next_refresh = next_status = 0
         process_count = 0
         last_error = None
+        last_phase = None
+        idle_streams = set()
 
         def event(value):
-            if value.get("kind") == "player_position":
+            kind = value.get("kind")
+            if kind == "player_position":
                 counters["player_positions"] += 1
+            elif kind == "disconnect":
+                counters["stream_resets"] += 1
+            # A complete, decoded record is evidence of resumed traffic. Report
+            # that before forwarding the first position; otherwise MapState
+            # would reject it because the previous periodic status was waiting.
+            # Cleanup/reset events must never turn a paused or failed stream on.
+            if (last_phase != "observing" and not self._paused.is_set() and not self._stop.is_set()
+                    and kind in {"map", "object", "state", "use", "gone", "player_position"}):
+                status()
             self.on_event(value)
 
         def clear(at, reason):
@@ -326,12 +340,22 @@ class Collector:
             handles.clear()
 
         def status(phase=None, detail=None):
-            synced = sum(s.decoder.synced for s in streams.values())
+            nonlocal last_phase, idle_streams
+            now = time.time()
+            synced_decoders = [stream.decoder for stream in streams.values() if stream.decoder.synced]
+            synced_keys = {decoder.connection_id for decoder in synced_decoders}
+            active_keys = {decoder.connection_id for decoder in synced_decoders if decoder.last_frame_at is not None
+                           and now - decoder.last_frame_at <= STREAM_IDLE_SECONDS}
+            idle_keys = synced_keys - active_keys
+            counters["idle_periods"] += len(idle_keys - idle_streams)
+            counters["idle_resumes"] += len(idle_streams & active_keys)
+            idle_streams = idle_keys
+            synced = len(synced_keys)
             opaque = sum(s.decoder.opaque for s in streams.values())
             if phase is None:
                 if self._paused.is_set():
                     phase, detail = "paused", "已暂停接收；恢复后重新确认位置状态"
-                elif synced:
+                elif active_keys:
                     phase, detail = "observing", "正在接收并解析本机游戏对象变化"
                 elif not process_count:
                     phase, detail = "waiting", "等待 AION2 运行"
@@ -339,8 +363,11 @@ class Collector:
                     phase, detail = "waiting", "等待游戏服务器连接"
                 elif last_error:
                     phase, detail = "error", last_error
+                elif idle_keys:
+                    phase, detail = "waiting", "游戏连接暂时没有新数据，保留连接并等待恢复"
                 else:
                     phase, detail = "waiting", "已找到游戏连接，等待可验证的游戏数据"
+            last_phase = phase
             frame_times = [s.decoder.last_frame_at for s in streams.values() if s.decoder.last_frame_at is not None]
             self.on_status(dict(phase=phase, detail=detail, packets=counters["packets"],
                 frames=counters["frames"], heartbeats=counters["heartbeats"],
@@ -348,6 +375,8 @@ class Collector:
                 sockets=len(streams), capture_handles=len(handles), synced_connections=synced, opaque_connections=opaque,
                 process_count=process_count, gaps=counters["gaps"], malformed=counters["malformed"],
                 player_positions=counters["player_positions"], player_malformed=counters["player_malformed"],
+                idle_connections=len(idle_keys), idle_periods=counters["idle_periods"],
+                idle_resumes=counters["idle_resumes"], stream_resets=counters["stream_resets"],
                 driver_drops=counters["driver_drops"], truncated=counters["truncated"],
                 retransmitted_bytes=counters["retransmitted_bytes"]))
 
@@ -424,8 +453,9 @@ class Collector:
                         next_refresh = 0
                 for stream in streams.values():
                     stream.tick(now)
-                    if stream.decoder.synced and stream.decoder.last_frame_at and now - stream.decoder.last_frame_at > 10:
-                        stream.close(now, "超过 10 秒没有可确认的数据，等待恢复")
+                    # Silence is not a missing TCP byte or a closed connection.
+                    # Keep framing, identity and map context; status() marks the
+                    # stream idle. FIN/RST, gaps and ownership loss still close it.
                 if mono >= next_status:
                     next_status = mono + 1
                     for opened in handles.values():

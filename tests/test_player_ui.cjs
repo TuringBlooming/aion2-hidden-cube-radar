@@ -344,4 +344,14 @@ assert.equal(controlsUI.state.records.length, 3, "closing candidate details pres
 controlsUI.acceptData(controlsData({ records: [far, upcoming, newBag], alert_seq: 2,
   latest_alert: { seq: 2, record_id: newBag.id, at: currentTime } }));
 assert.equal(controlsUI.state.selected, null); assert.equal(controlsUI.state.selectedCandidate, null);
-console.log("Player reference UI: expiry, map/session isolation, follow/drag/zoom, 240m target focus, candidate default/toggle, upcoming-point browsing, target cancellation and poll deduplication, quiet history and four languages passed.");
+for (const language of ["zh-CN", "en", "ja", "ko"]) {
+  const diagnosticUI = harness();
+  diagnosticUI.changeLanguage(language);
+  diagnosticUI.acceptData(api(null, { position_diagnostics: { state: "awaiting_map" } }));
+  assert.equal(diagnosticUI.elements.get("player-status").textContent, diagnosticUI.i18n.t("地图待确认，切换线路后恢复定位"));
+  diagnosticUI.acceptData(api(null, { position_diagnostics: { state: "awaiting_stream" } }));
+  assert.equal(diagnosticUI.elements.get("player-status").textContent, diagnosticUI.i18n.t("等待连接恢复，恢复后自动更新定位"));
+  diagnosticUI.acceptData(api(position({ observed_at: currentTime, expires_at: currentTime + 10 }), { position_diagnostics: { state: "tracking" } }));
+  assert.equal(diagnosticUI.elements.get("player-status").textContent, diagnosticUI.i18n.t("角色参考位置"));
+}
+console.log("Player reference UI: expiry, recovery diagnostics, map/session isolation, follow/drag/zoom, 240m target focus, candidate default/toggle, upcoming-point browsing, target cancellation and poll deduplication, quiet history and four languages passed.");

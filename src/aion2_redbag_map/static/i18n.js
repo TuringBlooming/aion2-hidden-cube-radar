@@ -4,6 +4,9 @@
   // Source-string keys keep user-visible copy reviewable without changing map data.
   const translations = {
     "角色参考位置": ["Character reference position", "キャラクターの参考位置", "캐릭터 참고 위치"],
+    "地图待确认，切换线路后恢复定位": ["Map unconfirmed; change channel to restore positioning", "マップ未確認。チャンネルを切り替えると測位を再開します", "지도 미확인: 채널을 변경하면 위치 확인이 재개됩니다"],
+    "等待连接恢复，恢复后自动更新定位": ["Waiting for the connection; positioning resumes automatically", "接続の復帰を待機中。復帰後に測位を自動再開します", "연결 복구 대기: 복구되면 위치가 자동 갱신됩니다"],
+    "游戏连接暂时没有新数据，保留连接并等待恢复": ["No new data on the game connection; keeping its context until traffic resumes", "ゲーム接続に新しいデータがありません。接続情報を保持して復帰を待機します", "게임 연결에 새 데이터가 없습니다. 연결 정보를 유지하며 복구를 기다립니다"],
     "取消连线": ["Clear target", "目標解除", "대상 해제"],
     "关闭详情并取消目标连线": ["Close details and clear the target line", "詳細を閉じて目標線を解除", "상세 닫기 및 대상 연결선 해제"],
     "清除当前目标、连线和箭头，保留历史记录；新提醒仍会显示。": ["Clear the current target, line and arrow. Keep history; new alerts still appear.", "現在の目標・線・矢印を解除します。履歴は保持し、新しい通知は引き続き表示します。", "현재 대상, 연결선, 화살표를 지웁니다. 기록은 유지되며 새 알림은 계속 표시됩니다."],

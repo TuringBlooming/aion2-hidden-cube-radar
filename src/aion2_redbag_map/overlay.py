@@ -896,7 +896,12 @@ class DesktopOverlay:
         receiving = self.state.connected and self.state.snapshot.get("mode") == "live" and not self.state.snapshot.get("paused") and self.state.snapshot.get("capture", {}).get("phase") == "observing"
         self.status_label.configure(text=f"●  {connection}   ·   {text('count', language, count=len(rows))}",
                                     fg="#68d6ae" if receiving else MUTED)
-        if player:
+        position_phase = self.state.snapshot.get("position_diagnostics", {}).get("state")
+        if position_phase == "awaiting_map":
+            self.player_label.configure(text=text("player_map_waiting", language), fg="#e6ba79")
+        elif position_phase == "awaiting_stream":
+            self.player_label.configure(text=text("player_syncing", language), fg="#e6ba79")
+        elif player:
             key = "player_age" if player["fresh"] else "player_expired"
             self.player_label.configure(text=text(key, language, seconds=player["age_seconds"]),
                                         fg=PLAYER_COLOR if player["fresh"] else "#899bb3")

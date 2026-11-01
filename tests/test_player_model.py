@@ -166,6 +166,29 @@ class PlayerPositionTests(unittest.TestCase):
         self.position()
         self.assertIsNone(self.state.snapshot()["player"])
 
+    def test_position_diagnostics_distinguish_decoding_from_acceptance_without_saving_identity(self):
+        before = self.state.path.read_bytes()
+        self.position(at=AT + 1)
+        initial = self.snapshot(AT + 1)["position_diagnostics"]
+        self.assertEqual((initial["state"], initial["received"], initial["accepted"]), ("awaiting_map", 1, 0))
+        self.assertEqual(initial["last_rejection"], "map_unconfirmed")
+        self.assertEqual(self.state.path.read_bytes(), before)
+        self.enter()
+        self.position(at=AT + 2)
+        active = self.snapshot(AT + 3)["position_diagnostics"]
+        self.assertEqual((active["state"], active["received"], active["accepted"], active["rejected"]), ("tracking", 2, 1, 1))
+        self.assertIsNone(active["last_rejection"])
+        self.assertEqual(self.snapshot(AT + 12)["position_diagnostics"]["state"], "stale")
+        self.state.handle(dict(kind="disconnect", connection_id="flow-A", at=AT + 13, reason="TCP connection ended"))
+        self.position(at=AT + 14)
+        reset = self.snapshot(AT + 14)["position_diagnostics"]
+        self.assertEqual(reset["state"], "awaiting_map")
+        self.assertEqual(reset["last_received_at"], AT + 14)
+        self.assertEqual(reset["last_accepted_at"], AT + 2)
+        self.assertEqual(reset["map_invalidation_reason"], "TCP connection ended")
+        self.assertNotIn("flow-A", json.dumps(reset))
+        self.assertNotIn("position_diagnostics", self.state.export_history())
+
     def test_position_does_not_consume_or_replace_real_bag_alert(self):
         self.enter()
         alert = self.state.handle(dict(kind="object", connection_id="flow-A", at=AT,
