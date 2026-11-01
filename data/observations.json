@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "description": "Historical observations shared by the project author. Not current availability or guaranteed respawn data.",
-  "record_count": 140,
+  "record_count": 144,
   "records": [
     {
       "map_id": 1110,
@@ -1961,6 +1961,62 @@
       "opened_at": 1793524183.937708,
       "refresh_anchor_at": 1793524183.937708,
       "id": "observation-7fff267334f0f4a0",
+      "source": "local-observation"
+    },
+    {
+      "map_id": 1110,
+      "x": 66019.43,
+      "y": -109532.391,
+      "z": 11603.0,
+      "status": "opened",
+      "first_seen": 1793536915.275433,
+      "received_at": 1793536915.275433,
+      "last_seen": 1793536925.67633,
+      "opened_at": 1793536925.67633,
+      "refresh_anchor_at": 1793536925.67633,
+      "id": "observation-b547b33d2d9a3374",
+      "source": "local-observation"
+    },
+    {
+      "map_id": 1110,
+      "x": 83625.539,
+      "y": -122067.773,
+      "z": 10066.0,
+      "status": "opened",
+      "first_seen": 1793537365.022934,
+      "received_at": 1793537365.022934,
+      "last_seen": 1793537379.875165,
+      "opened_at": 1793537379.875165,
+      "refresh_anchor_at": 1793537379.875165,
+      "id": "observation-ba63a65bd57f1fd5",
+      "source": "local-observation"
+    },
+    {
+      "map_id": 1110,
+      "x": 85546.219,
+      "y": -111535.617,
+      "z": 11934.0,
+      "status": "opened",
+      "first_seen": 1793537469.923577,
+      "received_at": 1793537469.923577,
+      "last_seen": 1793537480.974796,
+      "opened_at": 1793537480.974796,
+      "refresh_anchor_at": 1793537480.974796,
+      "id": "observation-462876dc21e6ff49",
+      "source": "local-observation"
+    },
+    {
+      "map_id": 1110,
+      "x": 75615.203,
+      "y": -120342.734,
+      "z": 10284.0,
+      "status": "opened",
+      "first_seen": 1793538098.525919,
+      "received_at": 1793538098.525919,
+      "last_seen": 1793538141.076789,
+      "opened_at": 1793538141.076789,
+      "refresh_anchor_at": 1793538141.076789,
+      "id": "observation-f64323ae427d36d9",
       "source": "local-observation"
     }
   ]
