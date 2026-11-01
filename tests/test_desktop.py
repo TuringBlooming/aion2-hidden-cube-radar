@@ -1,0 +1,352 @@
+import copy
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import threading
+from types import SimpleNamespace
+import unittest
+from unittest.mock import Mock, patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from aion2_redbag_map import __version__
+from aion2_redbag_map.__main__ import main
+from aion2_redbag_map.runtime import (APPLICATION_ID, DesktopError, LocalClient, NpcapMissing,
+                                     NoRedirect, RuntimeController, ServiceCollision, worker_command)
+
+
+def state(directory, pid=900, mode="offline", **changes):
+    return {"app": "AION2 RedBag Map", "application_id": APPLICATION_ID, "version": __version__,
+            "process_id": pid, "mode": mode, "paused": False, "control_token": "test-secret-not-for-logs",
+            "storage": {"directory": str(directory), "record_count": 12},
+            "capture": {"phase": "observing", "detail": "test"}, **changes}
+
+
+class FakeProcess:
+    def __init__(self, pid):
+        self.pid, self.alive = pid, True
+        self.waits = []
+        self.terminated = self.killed = False
+
+    def poll(self):
+        return None if self.alive else 0
+
+    def wait(self, timeout):
+        self.waits.append(timeout)
+        self.alive = False
+        return 0
+
+    def terminate(self):
+        self.terminated = True
+        self.alive = False
+
+    def kill(self):
+        self.killed = True
+        self.alive = False
+
+
+class FakeClient:
+    def __init__(self, directory, value=None):
+        self.directory = directory
+        self.value = value
+        self.url = "http://127.0.0.1:49173"
+        self.controls = []
+
+    def snapshot(self):
+        return copy.deepcopy(self.value)
+
+    def control(self, action, *, expected_pid=None):
+        if expected_pid is not None and self.value["process_id"] != expected_pid:
+            raise ServiceCollision("replacement")
+        self.controls.append((action, expected_pid))
+        if action == "shutdown":
+            self.value = None
+        else:
+            self.value["paused"] = action == "pause"
+        return {"ok": True}
+
+
+class FakeFactory:
+    def __init__(self, client):
+        self.client, self.calls, self.processes = client, [], []
+        self.collision = False
+
+    def __call__(self, command, **options):
+        self.calls.append((command, options))
+        process = FakeProcess(1000 + len(self.calls))
+        self.processes.append(process)
+        kind = command[command.index("--worker") + 1]
+        if kind == "service":
+            self.client.value = state(self.client.directory, pid=9999 if self.collision else process.pid,
+                                      mode="offline" if "--no-capture" in command else "live")
+        elif kind == "overlay":
+            (self.client.directory / "overlay-status.json").write_text(json.dumps(
+                {"pid": process.pid, "running": True, "api": self.client.url + "/api/state"}), encoding="utf-8")
+        return process
+
+
+class DesktopControllerTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.directory = Path(self.temporary.name)
+        self.client = FakeClient(self.directory)
+        self.factory = FakeFactory(self.client)
+        self.controller = RuntimeController(49173, self.directory, client=self.client,
+                                            process_factory=self.factory, driver_check=lambda: True, sleep=lambda _s: None)
+
+    def test_default_controller_does_not_start_any_worker_or_capture(self):
+        current = self.controller.status()
+        self.assertFalse(current["connected"])
+        self.assertEqual(self.factory.calls, [])
+        self.assertEqual(self.client.controls, [])
+        self.assertNotIn("token", json.dumps(current))
+        self.controller.close()
+        self.assertEqual(self.factory.calls, [])
+
+    def test_worker_commands_are_exact_and_never_use_a_shell(self):
+        with patch.object(sys, "frozen", False, create=True):
+            self.assertEqual(worker_command("service", ["--data-dir", "a path"]),
+                             [sys.executable, "-m", "aion2_redbag_map", "--worker", "service", "--data-dir", "a path"])
+        with patch.object(sys, "frozen", True, create=True):
+            self.assertEqual(worker_command("overlay"), [sys.executable, "--worker", "overlay"])
+        with self.assertRaises(ValueError):
+            worker_command("unrelated-program")
+        with self.assertRaises(TypeError):
+            worker_command("service", "--port")
+
+    def test_history_is_read_only_then_switches_owned_service_to_live(self):
+        self.controller.ensure_history()
+        history_process = self.controller.service
+        args, options = self.factory.calls[0]
+        self.assertIn("--no-capture", args)
+        self.assertIn("--read-only", args)
+        self.assertIn(str(self.directory), args)
+        self.assertNotIn("shell", options)
+        self.assertEqual(options["creationflags"], subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+        self.controller.start_receiving()
+        self.assertEqual(self.client.controls, [("shutdown", history_process.pid)])
+        self.assertFalse(history_process.alive)
+        self.assertEqual(self.client.value["mode"], "live")
+        self.assertNotIn("--no-capture", self.factory.calls[1][0])
+        self.controller.stop_receiving()
+        self.assertTrue(self.client.value["paused"])
+        self.controller.start_receiving()
+        self.assertFalse(self.client.value["paused"])
+        live_process = self.controller.service
+        self.controller.close()
+        self.assertEqual(self.client.controls[-1], ("shutdown", live_process.pid))
+        self.assertFalse(live_process.terminated)
+
+    def test_missing_npcap_blocks_live_without_starting_workers_but_allows_history(self):
+        self.controller.driver_check = lambda: False
+        with self.assertRaises(NpcapMissing):
+            self.controller.start_receiving()
+        self.assertEqual(self.factory.calls, [])
+        self.controller.ensure_history()
+        self.assertEqual(self.client.value["mode"], "offline")
+        self.assertIn("--no-capture", self.factory.calls[0][0])
+        self.controller.close()
+
+    def test_failed_owned_receiver_can_be_restarted_without_touching_external_services(self):
+        self.controller.start_receiving()
+        old_process = self.controller.service
+        self.client.value["capture"]["phase"] = "error"
+        self.controller.start_receiving()
+        self.assertEqual(self.client.controls, [("shutdown", old_process.pid)])
+        self.assertNotEqual(self.controller.service.pid, old_process.pid)
+        self.controller.close()
+
+    def test_hung_worker_fallback_uses_only_retained_child_handle(self):
+        process = Mock(pid=1001)
+        process.poll.return_value = None
+        process.wait.side_effect = [subprocess.TimeoutExpired("owned worker", 4), 0]
+        self.controller._finish_process(process)
+        process.terminate.assert_called_once_with()
+        process.kill.assert_not_called()
+        self.assertEqual(self.client.controls, [])
+
+    def test_reused_service_is_never_shutdown_on_desktop_exit(self):
+        self.client.value = state(self.directory, mode="live")
+        self.controller.start_receiving()
+        self.controller.ensure_history()
+        self.controller.close()
+        self.assertEqual(self.client.controls, [])
+        self.assertEqual(self.factory.calls, [])
+        self.assertEqual(self.client.value["process_id"], 900)
+
+    def test_foreign_history_service_is_not_replaced_to_start_live(self):
+        self.client.value = state(self.directory)
+        with self.assertRaises(DesktopError):
+            self.controller.start_receiving()
+        self.assertEqual(self.client.controls, [])
+        self.assertEqual(self.factory.calls, [])
+
+    def test_racing_service_is_not_mistaken_for_our_child(self):
+        self.factory.collision = True
+        with self.assertRaises(ServiceCollision):
+            self.controller.ensure_history()
+        self.assertEqual(self.client.value["process_id"], 9999)
+        self.assertEqual(self.client.controls, [])
+        self.assertFalse(self.factory.processes[0].alive)
+        self.assertIsNone(self.controller.service)
+
+    def test_replaced_endpoint_is_never_sent_shutdown(self):
+        self.controller.ensure_history()
+        own = self.controller.service
+        self.client.value = state(self.directory, pid=8888)
+        self.controller.close()
+        self.assertFalse(own.alive)
+        self.assertEqual(self.client.controls, [])
+        self.assertEqual(self.client.value["process_id"], 8888)
+
+    def test_owned_overlay_closes_with_its_stop_marker_and_reused_overlay_is_left_open(self):
+        self.controller.show_overlay()
+        overlay = self.controller.overlay
+        self.assertIsNotNone(overlay)
+        self.controller.show_overlay()
+        self.assertEqual(len(self.factory.calls), 2)
+        self.controller.close()
+        stop = json.loads((self.directory / "overlay.stop").read_text("utf-8"))
+        self.assertGreater(stop["requested_at"], 0)
+        self.assertFalse(overlay.terminated)
+        (self.directory / "overlay.stop").unlink()
+        self.client.value = state(self.directory, pid=900)
+        (self.directory / "overlay-status.json").write_text(json.dumps(
+            {"pid": 9876, "running": True, "api": self.client.url + "/api/state"}), encoding="utf-8")
+        controls_before = len(self.client.controls)
+        self.controller.show_overlay()
+        self.controller.close()
+        self.assertEqual(len(self.client.controls), controls_before)
+        self.assertEqual(len(self.factory.calls), 2)
+        self.assertFalse((self.directory / "overlay.stop").exists())
+
+    def test_overlay_connection_mismatch_is_reported_without_stop_marker(self):
+        self.client.value = state(self.directory)
+        (self.directory / "overlay-status.json").write_text(json.dumps(
+            {"pid": 9876, "running": True, "api": "http://127.0.0.1:49174/api/state"}), encoding="utf-8")
+        with self.assertRaises(ServiceCollision):
+            self.controller.show_overlay()
+        self.assertEqual(self.factory.calls, [])
+        self.assertFalse((self.directory / "overlay.stop").exists())
+
+    def test_map_opening_uses_only_local_url_without_control_token(self):
+        with patch("aion2_redbag_map.runtime.webbrowser.open") as browser:
+            self.controller.open_map()
+        browser.assert_called_once_with(self.client.url)
+        self.assertIn("--no-capture", self.factory.calls[0][0])
+        self.controller.close()
+
+    def test_worker_dispatch_preserves_arguments_and_restores_host_argv(self):
+        original = sys.argv
+        seen = []
+        module = SimpleNamespace(main=lambda: seen.append(list(sys.argv)) or 7)
+        with patch("aion2_redbag_map.__main__.importlib.import_module", return_value=module) as load:
+            self.assertEqual(main(["--worker", "archive", "--once", "--data-dir", "a path"]), 7)
+        load.assert_called_once_with("aion2_redbag_map.git_archive")
+        self.assertEqual(seen[0][1:], ["--once", "--data-dir", "a path"])
+        self.assertIs(sys.argv, original)
+
+    def test_self_check_does_not_create_gui_or_processes(self):
+        output = self.directory / "check.json"
+        with patch("subprocess.Popen", side_effect=AssertionError("must not start a process")):
+            with patch("tkinter.Tk", side_effect=AssertionError("must not create a window")):
+                result = main(["--self-check", str(output)])
+        report = json.loads(output.read_text("utf-8"))
+        self.assertEqual(result, 0 if report["ok"] else 1)
+        self.assertEqual(report["version"], __version__)
+        self.assertFalse(report["capture_started"])
+        self.assertFalse(report["gui_started"])
+        self.assertEqual(report["resources"]["map_count"], 18)
+        self.assertEqual(report["resources"]["candidate_count"], 3721)
+        self.assertEqual(report["resources"]["bundled_map_images"], 0)
+
+    def test_windowed_worker_supplies_and_closes_missing_standard_streams(self):
+        used = []
+        def worker():
+            used.extend((sys.stdout, sys.stderr, sys.stdin))
+            print("worker diagnostic", flush=True)
+            sys.stderr.write("worker diagnostic\n")
+            self.assertEqual(sys.stdin.read(), "")
+        with patch.object(sys, "stdout", None), patch.object(sys, "stderr", None), patch.object(sys, "stdin", None):
+            with patch("aion2_redbag_map.__main__.importlib.import_module", return_value=SimpleNamespace(main=worker)):
+                main(["--worker", "service"])
+            self.assertIsNone(sys.stdout)
+            self.assertIsNone(sys.stderr)
+            self.assertIsNone(sys.stdin)
+        self.assertTrue(all(stream.closed for stream in used))
+
+
+class LocalClientTests(unittest.TestCase):
+    def test_identity_and_directory_must_match_before_control(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            client = LocalClient(49173, root)
+            for invalid in ({"app": "other"}, state(root, application_id="old-map"),
+                            state(root / "another"), state(root, process_id=True)):
+                with self.subTest(invalid=invalid):
+                    with self.assertRaises(ServiceCollision):
+                        client.validate(invalid)
+            self.assertEqual(client.validate(state(root))["process_id"], 900)
+            with self.assertRaises(ServiceCollision):
+                NoRedirect().redirect_request(None, None, None, None, None)
+
+    def test_loopback_http_ignores_proxies_sends_token_and_rejects_redirect(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            calls = []
+            class Handler(BaseHTTPRequestHandler):
+                redirect = False
+                def log_message(self, *_args):
+                    pass
+                def do_GET(self):
+                    calls.append(("GET", self.path))
+                    if self.redirect:
+                        self.send_response(302)
+                        self.send_header("Location", "/should-not-follow")
+                        self.end_headers()
+                        return
+                    raw = json.dumps(state(root)).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Length", str(len(raw)))
+                    self.end_headers()
+                    self.wfile.write(raw)
+                def do_POST(self):
+                    body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                    calls.append(("POST", self.path, self.headers.get("X-Redbag-Key"), self.headers.get("Origin"), body))
+                    raw = b'{"ok": true}'
+                    self.send_response(200)
+                    self.send_header("Content-Length", str(len(raw)))
+                    self.end_headers()
+                    self.wfile.write(raw)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                with patch.dict(os.environ, {"HTTP_PROXY": "http://127.0.0.1:9", "ALL_PROXY": "http://127.0.0.1:9"}):
+                    client = LocalClient(server.server_port, root)
+                    self.assertEqual(client.snapshot()["process_id"], 900)
+                    client.control("pause", expected_pid=900)
+                post = next(call for call in calls if call[0] == "POST")
+                self.assertEqual(post[1], "/api/control")
+                self.assertEqual(post[2], "test-secret-not-for-logs")
+                self.assertEqual(post[3], client.url)
+                self.assertEqual(post[4], {"action": "pause"})
+                with self.assertRaises(ServiceCollision):
+                    client.control("shutdown", expected_pid=901)
+                self.assertEqual(len([call for call in calls if call[0] == "POST"]), 1)
+                Handler.redirect = True
+                with self.assertRaises(ServiceCollision):
+                    client.snapshot()
+                self.assertFalse(any(call[1] == "/should-not-follow" for call in calls))
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(2)
+
+
+if __name__ == "__main__":
+    unittest.main()

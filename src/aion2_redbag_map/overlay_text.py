@@ -1,0 +1,49 @@
+"""Text for the independent desktop map, following the map service language."""
+from .localization import restored_language
+
+TEXT = {
+    "title": ("背包悬浮地图", "Bag mini map", "バッグ小マップ", "가방 미니 지도"),
+    "waiting": ("正在连接本机地图…", "Connecting to local map…", "ローカルマップに接続中…", "로컬 지도 연결 중…"),
+    "live": ("实时接收", "Receiving", "受信中", "수신 중"),
+    "history": ("历史浏览", "History", "履歴", "과거 기록"),
+    "offline": ("连接断开 · 保留最后记录", "Disconnected · Last records retained", "切断 · 最後の記録を保持", "연결 끊김 · 마지막 기록 유지"),
+    "paused": ("接收暂停", "Receiving paused", "受信停止中", "수신 일시정지"),
+    "fit": ("全图", "Fit", "全体", "전체"),
+    "latest": ("背包", "Bag", "バッグ", "가방"),
+    "follow": ("跟随：关", "Follow: off", "追従：オフ", "따라가기: 꺼짐"),
+    "following": ("跟随：开", "Follow: on", "追従：オン", "따라가기: 켜짐"),
+    "follow_waiting": ("等待定位", "Awaiting position", "位置を待機", "위치 대기"),
+    "player_waiting": ("角色参考位置 · 尚未收到", "Reference position · Not observed", "参考位置 · 未受信", "참고 위치 · 미수신"),
+    "player_age": ("角色参考位置 · {seconds} 秒前", "Reference position · {seconds}s ago", "参考位置 · {seconds}秒前", "참고 위치 · {seconds}초 전"),
+    "player_expired": ("角色参考位置已过期 · {seconds} 秒前", "Reference expired · {seconds}s ago", "参考位置は期限切れ · {seconds}秒前", "참고 위치 만료 · {seconds}초 전"),
+    "player_short": ("角色参考点", "Reference", "参考点", "참고점"),
+    "expired_short": ("参考点已过期", "Expired reference", "参考点期限切れ", "만료된 참고점"),
+    "distance": ("约 {meters} 米（平面参考距离）", "About {meters} m (planar estimate)", "約{meters}m（平面参考距離）", "약 {meters}m (평면 참고 거리)"),
+    "distance_short": ("约 {meters} 米", "About {meters} m", "約{meters}m", "약 {meters}m"),
+    "bag_target": ("红背包", "Red bag", "赤いバッグ", "빨간 가방"),
+    "bag_outside": ("红背包 · 画面外", "Red bag · Off screen", "赤いバッグ · 画面外", "빨간 가방 · 화면 밖"),
+    "background": ("底图", "Map", "地図", "지도"),
+    "layer": ("透明图层", "Layer", "透明レイヤー", "투명 레이어"),
+    "opacity": ("不透明度", "Opacity", "不透明度", "불투명도"),
+    "collapse": ("收起", "Fold", "縮小", "접기"),
+    "expand": ("展开", "Open", "展開", "펼치기"),
+    "close": ("关闭", "Close", "閉じる", "닫기"),
+    "seen": ("收到记录", "Observed", "受信記録", "수신 기록"),
+    "used": ("有人交互", "Interaction", "操作あり", "상호작용"),
+    "opened": ("已开启", "Opened", "開封済み", "열림"),
+    "unknown": ("未知", "Unknown", "不明", "미확인"),
+    "soon": ("即将刷新", "Due soon", "まもなく", "곧 재출현"),
+    "new": ("新收到红色背包", "New red bag observed", "赤いバッグを受信", "새 빨간 가방 수신"),
+    "updated": ("最新更新", "Latest update", "最終更新", "최근 갱신"),
+    "empty": ("当前地图暂无收到的背包", "No observed bags on this map", "このマップには受信記録がありません", "현재 지도에 수신한 가방 없음"),
+    "no_map": ("坐标网格 · 可从主窗口导入地图", "Coordinate grid · Import maps in the main window", "座標グリッド · メイン画面で地図を読込", "좌표 격자 · 메인 창에서 지도 가져오기"),
+    "hint": ("拖标题移动 · 拖地图平移 · 滚轮缩放", "Drag title to move · Drag map to pan · Wheel to zoom", "見出しで移動 · 地図をドラッグ · ホイールで拡大", "제목 드래그로 이동 · 지도 드래그 · 휠 확대"),
+    "locked_hint": ("角色保持居中 · 关闭跟随后可浏览", "Character centred · Turn Follow off to browse", "キャラクターを中央に固定 · 追従オフで閲覧", "캐릭터 중앙 고정 · 따라가기 끄면 지도 탐색"),
+    "layer_hint": ("拖标题移动、± 缩放对齐；点底图可平移", "Align with title drag and ±; enable Map to pan", "見出しの移動と±で調整 · 地図でドラッグ", "제목·±로 정렬 · 지도 표시 후 드래그"),
+    "count": ("{count} 个点位", "{count} locations", "{count} か所", "위치 {count}개"),
+}
+
+
+def text(key, language="zh-CN", **values):
+    position = ("zh-CN", "en", "ja", "ko").index(restored_language(language))
+    return TEXT[key][position].format(**values)

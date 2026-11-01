@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+*.log
+*.lock
+*.pcap
+*.pcapng
+history.json
+history.previous.json
+overlay-settings.json
+overlay-status.json
+assets/
+backups/
+tests/private/
+# data/ contains the deliberately shared, sanitized point datasets.

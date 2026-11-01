@@ -1,0 +1,182 @@
+[
+  {
+    "id": 20,
+    "name": "Reshanta Inferior",
+    "english_name": "Reshanta Inferior",
+    "x": -500000,
+    "y": -500000,
+    "w": 1000000,
+    "h": 1000000,
+    "bounds_kind": "coordinate_grid"
+  },
+  {
+    "id": 22,
+    "name": "Reshanta Média",
+    "english_name": "Reshanta Média",
+    "x": -500000,
+    "y": -500000,
+    "w": 1000000,
+    "h": 1000000,
+    "bounds_kind": "coordinate_grid"
+  },
+  {
+    "id": 23,
+    "name": "Reshanta Superior",
+    "english_name": "Reshanta Superior",
+    "x": -500000,
+    "y": -500000,
+    "w": 1000000,
+    "h": 1000000,
+    "bounds_kind": "coordinate_grid"
+  },
+  {
+    "id": 1000,
+    "name": "Poeta",
+    "english_name": "Poeta",
+    "x": -500000,
+    "y": -500000,
+    "w": 1000000,
+    "h": 1000000,
+    "bounds_kind": "coordinate_grid"
+  },
+  {
+    "id": 1010,
+    "name": "Verteron",
+    "english_name": "Verteron",
+    "x": -500000,
+    "y": -500000,
+    "w": 1000000,
+    "h": 1000000,
+    "bounds_kind": "coordinate_grid"
+  },
+  {
+    "id": 1011,
+    "name": "Eltnen",
+    "english_name": "Eltnen",
+    "x": -500000,
+    "y": -500000,
+    "w": 1000000,
+    "h": 1000000,
+    "bounds_kind": "coordinate_grid"
+  },
+  {
+    "id": 1100,
+    "name": "Ishalgen",
+    "english_name": "Ishalgen",
+    "x": -500000,
+    "y": -500000,
+    "w": 1000000,
+    "h": 1000000,
+    "bounds_kind": "coordinate_grid"
+  },
+  {
+    "id": 1110,
+    "name": "Altgard",
+    "english_name": "Altgard",
+    "x": -500000,
+    "y": -500000,
+    "w": 1000000,
+    "h": 1000000,
+    "bounds_kind": "coordinate_grid"
+  },
+  {
+    "id": 1111,
+    "name": "Morheim",
+    "english_name": "Morheim",
+    "x": -500000,
+    "y": -500000,
+    "w": 1000000,
+    "h": 1000000,
+    "bounds_kind": "coordinate_grid"
+  },
+  {
+    "id": 600001,
+    "name": "Caverna de Krao",
+    "english_name": "Caverna de Krao",
+    "x": -500000,
+    "y": -500000,
+    "w": 1000000,
+    "h": 1000000,
+    "bounds_kind": "coordinate_grid"
+  },
+  {
+    "id": 600002,
+    "name": "Caverna de Krao",
+    "english_name": "Caverna de Krao",
+    "x": -500000,
+    "y": -500000,
+    "w": 1000000,
+    "h": 1000000,
+    "bounds_kind": "coordinate_grid"
+  },
+  {
+    "id": 600004,
+    "name": "Caverna de Krao",
+    "english_name": "Caverna de Krao",
+    "x": -500000,
+    "y": -500000,
+    "w": 1000000,
+    "h": 1000000,
+    "bounds_kind": "coordinate_grid"
+  },
+  {
+    "id": 600021,
+    "name": "Templo Divino do Fogo",
+    "english_name": "Templo Divino do Fogo",
+    "x": -500000,
+    "y": -500000,
+    "w": 1000000,
+    "h": 1000000,
+    "bounds_kind": "coordinate_grid"
+  },
+  {
+    "id": 600022,
+    "name": "Templo Divino do Fogo",
+    "english_name": "Templo Divino do Fogo",
+    "x": -500000,
+    "y": -500000,
+    "w": 1000000,
+    "h": 1000000,
+    "bounds_kind": "coordinate_grid"
+  },
+  {
+    "id": 600023,
+    "name": "Templo Divino do Fogo",
+    "english_name": "Templo Divino do Fogo",
+    "x": -500000,
+    "y": -500000,
+    "w": 1000000,
+    "h": 1000000,
+    "bounds_kind": "coordinate_grid"
+  },
+  {
+    "id": 600031,
+    "name": "Draupnir",
+    "english_name": "Draupnir",
+    "x": -500000,
+    "y": -500000,
+    "w": 1000000,
+    "h": 1000000,
+    "bounds_kind": "coordinate_grid"
+  },
+  {
+    "id": 600032,
+    "name": "Draupnir",
+    "english_name": "Draupnir",
+    "x": -500000,
+    "y": -500000,
+    "w": 1000000,
+    "h": 1000000,
+    "bounds_kind": "coordinate_grid"
+  },
+  {
+    "id": 600033,
+    "name": "Draupnir",
+    "english_name": "Draupnir",
+    "x": -500000,
+    "y": -500000,
+    "w": 1000000,
+    "h": 1000000,
+    "bounds_kind": "coordinate_grid"
+  }
+]

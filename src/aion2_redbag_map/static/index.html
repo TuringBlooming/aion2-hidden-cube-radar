@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title data-i18n="红色背包 · AION2 地图">红色背包 · AION2 地图</title>
+  <link rel="stylesheet" href="/style.css?v=1.2.0-position">
+  <script src="/i18n.js?v=1.2.2-bag-focus" defer></script>
+  <script src="/app.js?v=1.2.2-bag-focus" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="背包记录和工具状态" data-i18n-aria-label="背包记录和工具状态">
+      <header class="brand">
+        <div class="brand-symbol" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M12 7V5a4 4 0 0 1 8 0v2M8 9h16l2 20H6L8 9Z"/><path d="M10 15h12v8H10zM13 19h6"/></svg></div>
+        <div class="brand-name"><div class="eyebrow" data-i18n="AION2 · 本地地图">AION2 · 本地地图</div><h1 data-i18n="红色背包">红色背包</h1></div>
+        <span class="local-tag" data-i18n="本机">本机</span>
+      </header>
+
+      <section class="connection-card" aria-label="接收状态" data-i18n-aria-label="接收状态">
+        <div class="connection-head"><span class="status-dot" id="connection-dot"></span><strong id="connection-label" data-i18n="正在连接工具">正在连接工具</strong><span class="live-chip" id="live-chip" data-i18n="等待">等待</span></div>
+        <p id="connection-detail" data-i18n="正在读取本地工具状态…">正在读取本地工具状态…</p>
+        <div class="connection-meta"><span id="packet-count" data-i18n="0 条数据">0 条数据</span><span id="packet-age" data-i18n="尚未收到">尚未收到</span></div>
+      </section>
+
+      <section class="candidate-panel" aria-label="历史隐藏背包候选点" data-i18n-aria-label="历史隐藏背包候选点">
+        <div class="candidate-heading"><span class="candidate-symbol" aria-hidden="true">◇</span><strong data-i18n="历史隐藏背包">历史隐藏背包</strong><span id="candidate-count" data-i18n="载入中">载入中</span></div>
+        <p id="candidate-description" data-i18n="A2Helper 0.1.25 已记录的位置，颜色和当前刷新状态未知。">A2Helper 0.1.25 已记录的位置，颜色和当前刷新状态未知。</p>
+        <form id="candidate-index-form" class="candidate-index-form">
+          <label class="sr-only" for="candidate-index" data-i18n="历史候选点编号">历史候选点编号</label>
+          <input id="candidate-index" type="number" min="1" step="1" inputmode="numeric" placeholder="输入点位编号" data-i18n-placeholder="输入点位编号" disabled>
+          <button class="secondary-button" id="candidate-locate" type="submit" data-i18n="定位点位" disabled>定位点位</button>
+        </form>
+      </section>
+      <div class="records-heading"><h2><span data-i18n="接收记录">接收记录</span> <span id="record-count">0</span></h2><button class="text-button" id="latest-button" type="button" title="定位最近更新的点位" data-i18n-title="定位最近更新的点位" disabled><span data-i18n="定位最近">定位最近</span> <span aria-hidden="true">↗</span></button></div>
+      <div class="filter-tabs" role="group" aria-label="筛选位置记录" data-i18n-aria-label="筛选位置记录">
+        <button class="filter-tab active" type="button" data-filter="all" aria-pressed="true" data-i18n="全部">全部</button>
+        <button class="filter-tab" type="button" data-filter="pending" aria-pressed="false" data-i18n="待确认">待确认</button>
+        <button class="filter-tab" type="button" data-filter="opened" aria-pressed="false" data-i18n="已开启">已开启</button>
+        <button class="filter-tab" type="button" data-filter="soon" aria-pressed="false" data-i18n="即将刷新">即将刷新</button>
+        <button class="filter-tab" type="button" data-filter="unknown" aria-pressed="false" data-i18n="未知">未知</button>
+      </div>
+      <div class="record-list" id="record-list" aria-label="位置记录列表" data-i18n-aria-label="位置记录列表">
+        <div class="empty-state"><span class="empty-icon" aria-hidden="true">◇</span><strong data-i18n="等待红色背包记录">等待红色背包记录</strong><p data-i18n="正常跑图即可。收到位置后，会在这里和地图上显示。">正常跑图即可。收到位置后，会在这里和地图上显示。</p></div>
+      </div>
+
+      <section class="selected-card" id="selected-card" hidden aria-label="选中位置详情" data-i18n-aria-label="选中位置详情">
+        <div class="selected-heading"><span data-i18n="选中位置">选中位置</span><button class="icon-button small" id="clear-selection" type="button" aria-label="关闭位置详情" data-i18n-aria-label="关闭位置详情">×</button></div>
+        <div class="selected-title"><strong id="selected-name" data-i18n="红色背包">红色背包</strong><span class="record-status" id="selected-status"></span></div>
+        <div class="selected-coordinates" id="selected-coordinates"></div>
+        <p class="selected-distance" id="selected-distance"></p>
+        <p id="selected-time"></p><p class="selected-source" id="selected-source"></p>
+        <div class="selected-refresh" id="selected-refresh" hidden>
+          <strong id="refresh-countdown"></strong>
+          <dl><div><dt data-i18n="预警开始">预警开始</dt><dd id="refresh-soon-time"></dd></div><div><dt data-i18n="预计刷新">预计刷新</dt><dd id="refresh-expected-time"></dd></div><div><dt data-i18n="提示结束">提示结束</dt><dd id="refresh-end-time"></dd></div></dl>
+          <p data-i18n="以最新更新时间为起点，每小时估算一次，仅在前后 5 分钟提示。实际刷新以新记录为准；计时不播放警铃。">以最新更新时间为起点，每小时估算一次，仅在前后 5 分钟提示。实际刷新以新记录为准；计时不播放警铃。</p>
+        </div>
+        <button class="secondary-button wide" type="button" id="copy-coordinates" data-i18n="复制坐标">复制坐标</button>
+      </section>
+
+      <footer class="sidebar-footer">
+        <div class="control-row"><button class="secondary-button" id="pause-button" type="button" disabled><span aria-hidden="true">Ⅱ</span> <span data-i18n="暂停接收">暂停接收</span></button><button class="secondary-button" id="sound-button" type="button" disabled><span aria-hidden="true">♪</span> <span data-i18n="声音开启">声音开启</span></button></div>
+        <button class="notification-button" id="notification-button" type="button"><span data-i18n="开启浏览器通知">开启浏览器通知</span> <span aria-hidden="true">↗</span></button>
+        <div class="footer-links"><button class="text-button" id="test-alert-button" type="button" data-i18n="测试提醒" disabled>测试提醒</button><button class="text-button muted" id="stop-button" type="button" data-i18n="退出工具" disabled>退出工具</button></div>
+        <details class="storage-panel" id="storage-panel">
+          <summary><span data-i18n="本地存档">本地存档</span><strong id="storage-count" data-i18n="载入中">载入中</strong><span class="storage-warning" id="storage-warning" data-i18n="保存异常" hidden>保存异常</span></summary>
+          <div class="storage-content">
+            <p id="storage-note" data-i18n="正在读取存档信息…">正在读取存档信息…</p>
+            <p class="storage-map-count" id="storage-map-count"></p>
+            <div id="storage-meta" hidden>
+              <span class="storage-path-label" data-i18n="保存位置">保存位置</span><p class="storage-path" id="storage-path" dir="auto"></p>
+              <dl><div><dt data-i18n="最后保存">最后保存</dt><dd id="storage-saved-at">—</dd></div><div><dt data-i18n="自动备份">自动备份</dt><dd id="storage-backups">—</dd></div></dl>
+            </div>
+            <p class="storage-error" id="storage-error" hidden></p>
+            <div class="storage-actions" id="storage-actions" hidden><button class="secondary-button" id="open-data-folder" type="button" data-i18n="打开目录" disabled>打开目录</button><a class="secondary-button" id="export-history" href="/api/history-export" download="AION2-RedBag-history.json" data-i18n="导出备份">导出备份</a></div>
+          </div>
+        </details>
+        <p class="scope-note" data-i18n="实时接收仅涵盖本机收到的记录；历史点位不代表当前有背包。">实时接收仅涵盖本机收到的记录；历史点位不代表当前有背包。</p>
+      </footer>
+    </aside>
+
+    <main class="map-section">
+      <header class="map-header">
+        <div class="map-header-heading"><div class="eyebrow" data-i18n="世界地图">世界地图</div><div class="map-title-line"><h2 id="map-title" data-i18n="地图">地图</h2><span class="map-source" id="map-source" data-i18n="等待地图信息">等待地图信息</span></div></div>
+        <div class="header-actions">
+          <div class="header-clock"><span class="clock-date" id="clock-date"></span><strong id="clock-time">--:--:--</strong><span data-i18n="北京时间 UTC+8">北京时间 UTC+8</span></div>
+          <label class="language-picker"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15M10 2.5c4 4 4 11 0 15M10 2.5c-4 4-4 11 0 15"/></svg><select id="language-select" aria-label="界面语言" data-i18n-aria-label="界面语言"><option value="zh-CN">简体中文</option><option value="en">English</option><option value="ja">日本語</option><option value="ko">한국어</option></select></label>
+        </div>
+      </header>
+
+      <section class="player-bar unavailable" id="player-bar" aria-label="角色参考位置" data-i18n-aria-label="角色参考位置" title="离散的参考坐标，可能包含位移误差；10 秒后过期，不代表连续定位。" data-i18n-title="离散的参考坐标，可能包含位移误差；10 秒后过期，不代表连续定位。">
+        <span class="player-symbol" aria-hidden="true">●</span>
+        <div class="player-info"><div><strong id="player-status" data-i18n="等待地图与角色参考位置">等待地图与角色参考位置</strong><span id="player-age"></span></div><span class="player-coordinates" id="player-coordinates"></span></div>
+        <button class="secondary-button" id="follow-player" type="button" aria-pressed="false" title="新参考位置到达时居中；拖动地图退出跟随。" data-i18n-title="新参考位置到达时居中；拖动地图退出跟随。" data-i18n="跟随角色" disabled>跟随角色</button>
+      </section>
+
+      <div class="map-stage" id="map-stage">
+        <canvas id="map-canvas" tabindex="0" role="img" aria-label="可交互坐标地图。拖动平移，滚轮或加减键缩放，点击标记查看位置，按 0 查看全图。" data-i18n-aria-label="可交互坐标地图。拖动平移，滚轮或加减键缩放，点击标记查看位置，按 0 查看全图。"></canvas>
+        <div class="map-tools">
+          <label class="map-picker"><span aria-hidden="true">⌖</span><select id="map-select" aria-label="选择地图" data-i18n-aria-label="选择地图" disabled><option data-i18n="加载地图…">加载地图…</option></select></label>
+          <button class="map-tool-button active" id="candidates-button" type="button" aria-pressed="true" title="显示或隐藏历史候选点；不代表目前有背包" data-i18n-title="显示或隐藏历史候选点；不代表目前有背包"><b class="candidate-symbol" aria-hidden="true">◇</b><span data-i18n="历史点位">历史点位</span><small id="candidate-layer-count">…</small></button>
+          <button class="map-tool-button active" id="grid-button" type="button" aria-pressed="true" title="显示或隐藏坐标网格" data-i18n-title="显示或隐藏坐标网格"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 2v16M14 2v16M2 6h16M2 14h16"/></svg><span data-i18n="坐标">坐标</span></button>
+          <button class="map-tool-button" id="fit-button" type="button" title="查看全图（0）" data-i18n-title="查看全图（0）"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3H3v4M13 3h4v4M3 13v4h4M17 13v4h-4"/></svg><span data-i18n="全图">全图</span></button>
+        </div>
+
+        <div class="alert-banner" id="alert-banner" role="status" hidden>
+          <span class="alert-icon" aria-hidden="true">!</span><div><strong id="alert-title" data-i18n="收到红色背包记录">收到红色背包记录</strong><p id="alert-text"></p></div>
+          <button id="alert-locate" type="button"><span data-i18n="查看位置">查看位置</span> <span aria-hidden="true">↗</span></button><button id="alert-dismiss" type="button" class="alert-dismiss" aria-label="关闭提醒" data-i18n-aria-label="关闭提醒">×</button>
+        </div>
+
+        <div class="map-empty" id="map-empty" hidden><strong data-i18n="坐标网格">坐标网格</strong><span data-i18n="可从主窗口导入地图，点位仍可直接查看。">可从主窗口导入地图，点位仍可直接查看。</span></div>
+        <div class="marker-tooltip" id="marker-tooltip" hidden></div>
+        <div class="map-legend"><span id="candidate-legend"><i class="legend-dot candidate"></i><span data-i18n="历史候选">历史候选</span></span><span><i class="legend-dot red"></i><span data-i18n="收到记录">收到记录</span></span><span><i class="legend-dot amber"></i><span data-i18n="有人交互">有人交互</span></span><span><i class="legend-dot opened"></i><span data-i18n="已开启">已开启</span></span><span title="以最新更新时间为起点，每小时预计刷新前后 5 分钟提示，尚未证实已刷新" data-i18n-title="以最新更新时间为起点，每小时预计刷新前后 5 分钟提示，尚未证实已刷新"><i class="legend-dot soon"></i><span data-i18n="即将刷新">即将刷新</span></span><span><i class="legend-dot unknown"></i><span data-i18n="未知">未知</span></span></div>
+        <div class="zoom-controls"><button id="zoom-in" type="button" aria-label="放大" data-i18n-aria-label="放大">+</button><span id="zoom-level">1×</span><button id="zoom-out" type="button" aria-label="缩小" data-i18n-aria-label="缩小">−</button></div>
+        <div class="map-footer"><span id="map-hint" data-i18n="拖动平移 · 滚轮缩放 · 点击标记查看">拖动平移 · 滚轮缩放 · 点击标记查看</span><span class="cursor-coordinates" id="cursor-coordinates">X — &nbsp; Y —</span></div>
+        <div class="attribution" data-i18n="历史候选点来源 A2Helper · 坐标约 100 单位 = 1 米">历史候选点来源 A2Helper · 坐标约 100 单位 = 1 米</div>
+      </div>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status" hidden></div>
+</body>
+</html>

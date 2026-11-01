@@ -1,0 +1,14 @@
+{
+  "dataset": "A2Helper historical hidden-bag candidates",
+  "source_count": 3722,
+  "unique_count": 3721,
+  "source_url": "https://github.com/oPodera/a2helper-download/releases/tag/v0.1.25",
+  "source_member": "out/main/chunks/world-markers-CmU0lGQ9.js: refs[map_id][hidden-cube]",
+  "transformations": [
+    "Multiply x/y by 100 for world-coordinate units",
+    "Merge duplicate coordinates and retain source_indices"
+  ],
+  "license_status": "Upstream redistribution license not confirmed. Not relicensed under MIT by this project.",
+  "meaning": "Historical candidate coordinates. Color, current availability, height and respawn timing are unknown.",
+  "sha256": "15a59c52b9019193e327d148b431472bfa36aca8d92d5d63f3a1c7263132421a"
+}
