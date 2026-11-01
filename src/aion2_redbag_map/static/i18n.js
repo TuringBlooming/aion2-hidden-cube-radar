@@ -4,6 +4,9 @@
   // Source-string keys keep user-visible copy reviewable without changing map data.
   const translations = {
     "角色参考位置": ["Character reference position", "キャラクターの参考位置", "캐릭터 참고 위치"],
+    "取消连线": ["Clear target", "目標解除", "대상 해제"],
+    "关闭详情并取消目标连线": ["Close details and clear the target line", "詳細を閉じて目標線を解除", "상세 닫기 및 대상 연결선 해제"],
+    "清除当前目标、连线和箭头，保留历史记录；新提醒仍会显示。": ["Clear the current target, line and arrow. Keep history; new alerts still appear.", "現在の目標・線・矢印を解除します。履歴は保持し、新しい通知は引き続き表示します。", "현재 대상, 연결선, 화살표를 지웁니다. 기록은 유지되며 새 알림은 계속 표시됩니다."],
     "红色背包在画面外": ["Red bag outside this view", "赤いバッグは表示範囲外", "화면 밖 빨간 가방"],
     "所选候选点在画面外": ["Selected candidate outside this view", "選択した候補地点は表示範囲外", "선택한 후보 지점이 화면 밖에 있음"],
     "箭头仅表示当前地图画面方向": ["Arrow is relative to this map view", "矢印は現在のマップ画面に対する方向です", "화살표는 현재 지도 화면 기준 방향입니다"],

@@ -16,7 +16,7 @@ flowchart LR
     State --> HTTP[仅限本机的 HTTP 服务]
     HTTP --> Overlay[独立悬浮地图]
     HTTP --> Browser[网页地图]
-    Assets[用户导入的地图资源] --> Overlay
+    Assets[内置地图与可选导入资源] --> Overlay
     Assets --> HTTP
 ```
 
@@ -34,8 +34,9 @@ flowchart LR
 | `notify.py` | 声音与 Windows 通知。 |
 | `app.py` | 本机 HTTP 状态与控制接口，以及静态网页资源。 |
 | `overlay.py` / `overlay_text.py` | 独立悬浮地图、交互与多语言文本。 |
-| `static/` | 不依赖外部 CDN 的网页地图和完整历史候选点。 |
-| `resources.py` | 默认坐标网格，以及用户授权资源的本地导入与查找。 |
+| `static/` | 不依赖外部 CDN 的网页地图、完整历史候选点，以及 339 张内置总览和分块。 |
+| `maps.json` / `map-source.json` | 18 张地图的坐标标定，以及来源版本、核对日期和图片哈希。 |
+| `resources.py` | 载入内置坐标标定；本地导入的配套配置和同名图片可优先覆盖。 |
 | `git_archive.py` | 可选的本地历史版本归档。依赖本机 Git，不自动推送。 |
 
 ## 接收与进程访问
@@ -66,7 +67,7 @@ flowchart LR
 
 HTTP 服务绑定回环地址，默认使用 `127.0.0.1:18726`。控制请求受本机来源检查与运行时控制令牌约束。令牌属于本次本机运行，不应提交到 Git、截图或公开日志。
 
-个人数据使用 Windows 文档目录中的 `AION2-RedBag-Map/data/`。程序目录、公开观测数据和个人持续历史各自独立。资源导入位置是该数据目录下的 `assets/`。
+个人数据使用 Windows 文档目录中的 `AION2-RedBag-Map/data/`。程序目录、公开观测数据和个人持续历史各自独立。内置图片位于程序的 `static/maps/`，无需导入；可选资源导入位置是个人数据目录下的 `assets/`。有效导入配置与同名图片优先使用，缺少图片时回退内置素材。
 
 运行时不配置遥测、远端更新检查、云同步或上传。可选 Git 归档只产生本地版本；连接远端或公开存档是另外的显式操作，不由本工具自动完成。
 

@@ -43,15 +43,17 @@ class LocalApplicationTests(unittest.TestCase):
             return error.code, error.read(), error.headers
 
     def test_pages_state_and_assets(self):
-        for path in ('/', '/app.js', '/style.css', '/candidates.json'):
+        for path in ('/', '/app.js', '/style.css', '/candidates.json', '/maps/1110.webp', '/maps/1110/4_4.webp'):
             self.assertEqual(self.fetch(path)[0], 200, path)
-        self.assertEqual(self.fetch('/maps/1110.webp')[0], 404, "proprietary artwork is not bundled")
+        self.assertEqual(self.fetch('/maps/1110.webp')[1][:4], b'RIFF')
+        self.assertEqual(self.fetch('/maps/1110/4_4.webp')[1][:4], b'RIFF')
         self.assertEqual(self.fetch('/style.css')[2]['Cache-Control'], 'no-cache')
         code, data, headers = self.fetch('/api/state')
         state = json.loads(data)
         self.assertEqual(state['records'], [], "a new installation must not seed someone else's observations")
         self.assertEqual(state['application_id'], 'aion2-redbag-map')
         self.assertEqual(state['alert_seq'], 0)
+
         self.assertEqual(headers['Cache-Control'], 'no-store')
         self.assertIsNone(headers.get('Access-Control-Allow-Origin'))
         candidates = json.loads(self.fetch('/candidates.json')[1])
@@ -59,6 +61,14 @@ class LocalApplicationTests(unittest.TestCase):
         self.assertEqual(candidates['unique_count'], 3721)
         self.assertEqual(candidates['maps']['1110']['unique_count'], 1370)
         self.assertEqual(state['alert_seq'], 0)
+
+    def test_imported_image_overrides_bundled_overview(self):
+        from PIL import Image
+        path = Path(self.tmp.name) / 'assets/maps/1110.webp'
+        path.parent.mkdir(parents=True)
+        Image.new('RGB', (16, 16), 'blue').save(path)
+        self.assertEqual(self.fetch('/maps/1110.webp')[1], path.read_bytes())
+        self.assertEqual(self.fetch('/maps/1110/4_4.webp')[0], 200)
 
     def test_local_origin_and_control_token_required(self):
         self.assertEqual(self.fetch('/api/control', {'action': 'pause'})[0], 403)

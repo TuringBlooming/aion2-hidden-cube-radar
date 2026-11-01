@@ -262,7 +262,7 @@ class DesktopControllerTests(unittest.TestCase):
         self.assertFalse(report["gui_started"])
         self.assertEqual(report["resources"]["map_count"], 18)
         self.assertEqual(report["resources"]["candidate_count"], 3721)
-        self.assertEqual(report["resources"]["bundled_map_images"], 0)
+        self.assertEqual(report["resources"]["bundled_map_images"], 339)
 
     def test_windowed_worker_supplies_and_closes_missing_standard_streams(self):
         used = []

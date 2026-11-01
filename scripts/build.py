@@ -99,8 +99,19 @@ def check_package(folder):
     # Exact dataset bytes must survive packaging; the schema itself is checked in tests.
     if digest(resources / "static/candidates.json") != digest(ROOT / "src/aion2_redbag_map/static/candidates.json"):
         raise RuntimeError("Candidate dataset changed during packaging")
-    if not data or (resources / "static/maps").exists():
-        raise RuntimeError("Missing points or unexpected third-party artwork")
+    if not data:
+        raise RuntimeError("Missing candidate points")
+    for name in ("maps.json", "map-source.json"):
+        if digest(resources / name) != digest(ROOT / "src/aion2_redbag_map" / name):
+            raise RuntimeError(f"Map resource metadata changed during packaging: {name}")
+    map_manifest = json.loads((resources / "map-source.json").read_text("utf-8"))
+    map_files = {path.relative_to(resources / "static/maps").as_posix(): path
+                 for path in (resources / "static/maps").rglob("*") if path.is_file()}
+    if set(map_files) != set(map_manifest["map_assets"]):
+        raise RuntimeError("The bundled map overview or tile set is incomplete")
+    for relative, path in map_files.items():
+        if digest(path) != map_manifest["map_assets"][relative]["sha256"]:
+            raise RuntimeError(f"Map image changed during packaging: {relative}")
     if {p.name for p in (folder / "_internal/reference-data").iterdir()} != set(PUBLIC_DATA):
         raise RuntimeError("Unexpected public data file")
     for name in PUBLIC_DATA:
@@ -146,6 +157,7 @@ def main():
                "--add-data", f"{icon_path}:aion2_redbag_map",
                "--add-data", f"{ROOT / 'src/aion2_redbag_map/static'}:aion2_redbag_map/static",
                "--add-data", f"{ROOT / 'src/aion2_redbag_map/maps.json'}:aion2_redbag_map",
+               "--add-data", f"{ROOT / 'src/aion2_redbag_map/map-source.json'}:aion2_redbag_map",
                str(ROOT / "packaging/entry.py")]
     subprocess.run(command, cwd=ROOT, check=True)
     internal = output / "_internal"

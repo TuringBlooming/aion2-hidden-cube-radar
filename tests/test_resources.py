@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -5,7 +6,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from aion2_redbag_map.resources import image_path, import_assets, load_maps, validate_maps
+from aion2_redbag_map.resources import ROOT, image_path, import_assets, load_maps, validate_maps
 
 
 class ResourceImportTests(unittest.TestCase):
@@ -47,12 +48,37 @@ class ResourceImportTests(unittest.TestCase):
             self.assertEqual(sentinel.read_bytes(), b"existing manifest")
             self.assertFalse((target / "assets/maps").exists())
 
-    def test_default_grid_and_invalid_geometry(self):
-        self.assertTrue(all(row["bounds_kind"] == "coordinate_grid" for row in load_maps()))
+    def test_default_calibrated_maps_and_invalid_geometry(self):
+        maps = load_maps()
+        self.assertEqual(len(maps), 18)
+        altgard = next(row for row in maps if row["id"] == 1110)
+        self.assertEqual([altgard[key] for key in ("x", "y", "w", "h")], [-408000, -408000, 816000, 816000])
+        self.assertEqual(altgard["tiles"], [8, 8])
+        self.assertTrue(all("bounds_kind" not in row for row in maps))
         for value in ([], [{"id": 1, "x": float("nan"), "y": 0, "w": 100, "h": 100}],
                       [{"id": 1, "x": 0, "y": 0, "w": -1, "h": 100}]):
             with self.assertRaises(ValueError):
                 validate_maps(value)
+
+    def test_all_bundled_overviews_tiles_and_source_checksums_are_preserved(self):
+        manifest = json.loads((ROOT / "map-source.json").read_text("utf-8"))
+        self.assertEqual(manifest["source"], "A2Helper")
+        self.assertEqual(manifest["release_version"], "0.1.29")
+        folder = ROOT / "static/maps"
+        files = {path.relative_to(folder).as_posix(): path for path in folder.rglob("*") if path.is_file()}
+        self.assertEqual(len(files), 339)
+        self.assertEqual(sum("/" not in name for name in files), 18)
+        self.assertEqual(sum("/" in name for name in files), 321)
+        self.assertEqual(set(files), set(manifest["map_assets"]))
+        for relative, path in files.items():
+            self.assertEqual(path.stat().st_size, manifest["map_assets"][relative]["bytes"])
+            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), manifest["map_assets"][relative]["sha256"])
+        for row in load_maps():
+            self.assertIn(f"{row['id']}.webp", files)
+            if "tiles" in row:
+                for x in range(row["tiles"][0]):
+                    for y in range(row["tiles"][1]):
+                        self.assertIn(f"{row['id']}/{x}_{y}.webp", files)
 
 
 if __name__ == "__main__":

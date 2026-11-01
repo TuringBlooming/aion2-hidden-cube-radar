@@ -82,7 +82,7 @@ class DesktopWindow:
         self.import_button.pack(side="left", fill="x", expand=True, padx=(5, 0))
         self.buttons = [self.start_button, self.stop_button, self.overlay_button, self.map_button,
                         self.history_button, self.data_button, self.import_button]
-        self.notice = tk.Label(frame, text="地图图片需自行提供有权使用的资源", anchor="w", bg="#f3f5f8",
+        self.notice = tk.Label(frame, text="已内置地图与候选点；拖动地图可自由浏览", anchor="w", bg="#f3f5f8",
                                fg="#63748a", font=("Microsoft YaHei UI", 9))
         self.notice.pack(fill="x", pady=(13, 8))
         driver = tk.Frame(frame, bg="#f3f5f8")

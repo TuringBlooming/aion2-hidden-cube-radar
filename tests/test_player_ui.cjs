@@ -12,8 +12,8 @@ assert.ok(startup > 0);
 const anchor = 1792764000;
 let currentTime = anchor;
 
-function harness() {
-  const elements = new Map(), drawing = [];
+function harness(saved = {}) {
+  const elements = new Map(), drawing = [], storage = new Map(Object.entries(saved));
   const context2d = new Proxy({}, { get(target, key) {
     if (key in target) return target[key];
     if (key === "measureText") return text => ({ width: text.length * 6 });
@@ -44,15 +44,15 @@ function harness() {
   }
   const context = vm.createContext({
     window: {}, document, Date: Clock,
-    localStorage: { getItem() { return null; }, setItem() {} },
+    localStorage: { getItem(key) { return storage.get(key) ?? null; }, setItem(key, value) { storage.set(key, value); } },
     requestAnimationFrame() { return 1; }, setTimeout() { return 1; }, clearTimeout() {},
     Image: class {},
   });
   vm.runInContext(translations, context);
   const helpers = vm.runInContext(source.slice(0, startup) +
-    "return {state, view, acceptData, playerPosition, playerOnMap, playerDistance, setFollowPlayer, followPlayerPosition, renderPlayer, renderSelected, renderClock, drawPlayer, selectRecord, selectCandidate, zoom, focusTarget, targetEdge, drawTargetEdge, visibleRecords, hitMarker, toScreen};})();", context);
+    "return {state, view, acceptData, playerPosition, playerOnMap, playerDistance, setFollowPlayer, followPlayerPosition, renderPlayer, renderSelected, renderClock, drawPlayer, drawCandidates, selectRecord, selectCandidate, zoom, focusTarget, targetEdge, drawTargetEdge, visibleRecords, hitMarker, toScreen, changeLanguage};})();", context);
   helpers.view.width = 900; helpers.view.height = 700;
-  return { ...helpers, elements, drawing, i18n: context.window.I18N };
+  return { ...helpers, elements, drawing, storage, i18n: context.window.I18N };
 }
 
 const record = { id: "bag", map_id: 1110, template_id: 1301199, x: 1300, y: 2400, z: 90000,
@@ -252,4 +252,96 @@ const replayCenter = replayUI.view.cx, replayScale = replayUI.view.scale;
 replayUI.acceptData(api(undefined, { mode: "replay", records: [{ ...far, source: "replay" }], alert_seq: 1, latest_alert: { seq: 1, record_id: "far", at: currentTime } }));
 assert.equal(replayUI.state.selected, null, "historical replay does not trigger live autofocus");
 assert.equal(replayUI.view.cx, replayCenter); assert.equal(replayUI.view.scale, replayScale);
-console.log("Player reference UI: exact expiry, distance, map/session isolation, follow/drag/zoom, 240m target focus without zoom-out, selected target/filter visibility, off-screen arrows, expired-reference wording, quiet history and four languages passed.");
+
+// Candidates are available by default, remain separate from live records, and can be hidden explicitly.
+const controlsUI = harness();
+const upcoming = { ...nearby, id: "upcoming", status: "opened", refresh_estimated: true,
+  first_seen: anchor - 3500, last_seen: anchor - 3500, opened_at: anchor - 3500 };
+const controlsData = extra => api(position(), { records: [far, upcoming], ...extra });
+controlsUI.acceptData(controlsData()); controlsUI.setFollowPlayer(true);
+controlsUI.state.candidates = { maps: { "1110": { points: [candidate], unique_count: 1, source_count: 1 } } };
+assert.equal(controlsUI.state.showCandidates, true, "new users see the candidate layer without changing a preference");
+assert.equal(harness({ "redbag-show-candidates": "false" }).state.showCandidates, false, "an explicit saved hide preference is respected");
+controlsUI.drawing.length = 0; controlsUI.drawCandidates();
+assert.ok(controlsUI.drawing.some(call => call[0] === "lineTo"), "visible candidates draw their diamond markers");
+let candidatePoint = controlsUI.toScreen(candidate.x, candidate.y);
+assert.equal(controlsUI.hitMarker(candidatePoint.x, candidatePoint.y).id, candidate.id);
+const controlsCanvas = controlsUI.elements.get("map-canvas");
+controlsCanvas.handlers.get("pointerdown")({ button: 0, pointerId: 3, clientX: candidatePoint.x, clientY: candidatePoint.y });
+controlsCanvas.handlers.get("pointerup")({ type: "pointerup", pointerId: 3, clientX: candidatePoint.x, clientY: candidatePoint.y });
+assert.equal(controlsUI.state.selectedCandidate, candidate.id, "candidate map markers open their details");
+assert.equal(controlsUI.elements.get("clear-target").disabled, false);
+controlsUI.elements.get("candidates-button").handlers.get("click")();
+assert.equal(controlsUI.state.showCandidates, false);
+assert.equal(controlsUI.storage.get("redbag-show-candidates"), "false");
+assert.equal(controlsUI.state.selectedCandidate, null);
+assert.equal(controlsUI.elements.get("selected-card").hidden, true);
+assert.equal(controlsUI.hitMarker(candidatePoint.x, candidatePoint.y), null, "hidden candidates cannot intercept map clicks");
+controlsUI.drawing.length = 0; controlsUI.drawCandidates(); assert.equal(controlsUI.drawing.length, 0);
+controlsUI.elements.get("candidates-button").handlers.get("click")();
+assert.equal(controlsUI.storage.get("redbag-show-candidates"), "true");
+assert.equal(controlsUI.hitMarker(candidatePoint.x, candidatePoint.y).id, candidate.id);
+assert.equal(controlsUI.state.lastAlertSeq, 0, "candidate visibility never fabricates a live alert");
+
+// A user can leave follow mode to inspect an upcoming point without later player packets pulling the view back.
+controlsCanvas.handlers.get("pointerdown")({ button: 0, pointerId: 4, clientX: 100, clientY: 100 });
+controlsCanvas.handlers.get("pointermove")({ pointerId: 4, clientX: 150, clientY: 140 });
+controlsCanvas.handlers.get("pointerup")({ type: "pointerup", pointerId: 4, clientX: 150, clientY: 140 });
+const browsedView = { x: controlsUI.view.cx, y: controlsUI.view.cy, scale: controlsUI.view.scale };
+controlsUI.selectRecord("upcoming", false);
+assert.equal(controlsUI.elements.get("selected-status").textContent, "即将刷新");
+assert.equal(controlsUI.state.followPlayer, false);
+controlsUI.acceptData(controlsData({ player: position({ x: 2500, y: 2600 }) }));
+assert.deepEqual({ x: controlsUI.view.cx, y: controlsUI.view.cy, scale: controlsUI.view.scale }, browsedView,
+  "inspecting an upcoming point after dragging leaves the manually chosen view intact");
+
+// Clear-target and detail close clear the entire target presentation while keeping records and alert deduplication.
+controlsUI.setFollowPlayer(true);
+const liveAlert = { seq: 1, record_id: "far", at: currentTime };
+controlsUI.acceptData(controlsData({ alert_seq: 1, latest_alert: liveAlert }));
+assert.ok(controlsUI.targetEdge());
+controlsUI.drawing.length = 0; controlsUI.drawPlayer();
+assert.ok(controlsUI.drawing.some(call => call[0] === "lineTo"));
+const observationsBeforeClear = JSON.stringify(controlsUI.state.records);
+const clearView = { x: controlsUI.view.cx, y: controlsUI.view.cy, scale: controlsUI.view.scale };
+const cancel = controlsUI.elements.get("clear-target").handlers.get("click");
+assert.equal(cancel, controlsUI.elements.get("clear-selection").handlers.get("click"), "detail close and cancel-target have the same behavior");
+cancel();
+assert.equal(controlsUI.state.selected, null); assert.equal(controlsUI.state.selectedCandidate, null);
+assert.equal(controlsUI.state.alertRecord, null); assert.equal(controlsUI.state.flashId, null); assert.equal(controlsUI.state.flashUntil, 0);
+assert.equal(controlsUI.state.lastAlertSeq, 1, "clearing a target preserves the alert baseline");
+assert.equal(JSON.stringify(controlsUI.state.records), observationsBeforeClear, "canceling never deletes or modifies observations");
+assert.equal(controlsUI.state.followPlayer, true, "clearing a target does not toggle follow mode");
+assert.deepEqual({ x: controlsUI.view.cx, y: controlsUI.view.cy, scale: controlsUI.view.scale }, clearView);
+for (const id of ["selected-card", "alert-banner", "alert-locate", "marker-tooltip"]) {
+  assert.equal(controlsUI.elements.get(id).hidden, true, `${id} is dismissed with the target`);
+}
+assert.equal(controlsUI.elements.get("clear-target").disabled, true);
+assert.equal(controlsUI.targetEdge(), null);
+controlsUI.drawing.length = 0; controlsUI.drawPlayer(); controlsUI.drawTargetEdge();
+assert.ok(!controlsUI.drawing.some(call => call[0] === "lineTo"), "neither target line nor edge arrow survives cancellation");
+controlsUI.elements.get("alert-locate").handlers.get("click")();
+assert.equal(controlsUI.state.selected, null, "the dismissed alert no longer has a location target");
+for (const language of ["zh-CN", "en", "ja", "ko"]) {
+  controlsUI.changeLanguage(language);
+  controlsUI.acceptData(controlsData({ alert_seq: 1, latest_alert: liveAlert }));
+  controlsUI.renderClock();
+  assert.equal(controlsUI.state.selected, null, "repeated polling and language changes cannot restore the same dismissed alert");
+  assert.equal(controlsUI.state.alertRecord, null); assert.equal(controlsUI.state.flashId, null);
+  assert.equal(controlsUI.targetEdge(), null); assert.equal(controlsUI.elements.get("alert-banner").hidden, true);
+}
+const newBag = { ...nearby, id: "new-bag" };
+controlsUI.acceptData(controlsData({ records: [far, upcoming, newBag], alert_seq: 2,
+  latest_alert: { seq: 2, record_id: newBag.id, at: currentTime } }));
+assert.equal(controlsUI.state.selected, newBag.id, "the next new live alert can still select and highlight its target");
+assert.equal(controlsUI.state.flashId, newBag.id); assert.equal(controlsUI.elements.get("clear-target").disabled, false);
+controlsUI.selectCandidate(candidate, false);
+controlsUI.elements.get("clear-selection").handlers.get("click")();
+assert.equal(controlsUI.state.selectedCandidate, null); assert.equal(controlsUI.state.alertRecord, null);
+assert.equal(controlsUI.elements.get("candidate-index").value, "");
+assert.equal(controlsUI.state.candidates.maps["1110"].points.length, 1, "closing candidate details preserves its point data");
+assert.equal(controlsUI.state.records.length, 3, "closing candidate details preserves live and historical records");
+controlsUI.acceptData(controlsData({ records: [far, upcoming, newBag], alert_seq: 2,
+  latest_alert: { seq: 2, record_id: newBag.id, at: currentTime } }));
+assert.equal(controlsUI.state.selected, null); assert.equal(controlsUI.state.selectedCandidate, null);
+console.log("Player reference UI: expiry, map/session isolation, follow/drag/zoom, 240m target focus, candidate default/toggle, upcoming-point browsing, target cancellation and poll deduplication, quiet history and four languages passed.");

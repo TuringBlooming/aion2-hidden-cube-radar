@@ -151,6 +151,23 @@ def verify(executable, report):
     require(executable.is_file(), "The built executable was not found")
     expected_version = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))["project"]["version"]
     report["version"] = expected_version
+    resource_root = ROOT / "src/aion2_redbag_map"
+    map_manifest = json.loads((resource_root / "map-source.json").read_text("utf-8"))
+    expected_map_images = len(map_manifest["map_assets"])
+    require(expected_map_images == 339, "The map source manifest is incomplete")
+    bundled_resources = executable.parent / "_internal/aion2_redbag_map"
+    for name in ("maps.json", "map-source.json"):
+        require((bundled_resources / name).read_bytes() == (resource_root / name).read_bytes(),
+                "Bundled map resource metadata differs from the current source; rebuild the package")
+    map_files = {path.relative_to(bundled_resources / "static/maps").as_posix(): path
+                 for path in (bundled_resources / "static/maps").rglob("*") if path.is_file()}
+    require(set(map_files) == set(map_manifest["map_assets"]), "The bundled map overview or tile set is incomplete")
+    for relative, path in map_files.items():
+        with path.open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        require(digest == map_manifest["map_assets"][relative]["sha256"], "A bundled map image failed its source checksum")
+    report["map_assets"] = {"images": expected_map_images, "overviews": sum("/" not in key for key in map_files),
+                            "tiles": sum("/" in key for key in map_files), "source_checksums_match": True}
     with executable.open("rb") as stream:
         report["executable_sha256"] = hashlib.file_digest(stream, "sha256").hexdigest()
     report["pe"] = pe_properties(executable)
@@ -175,7 +192,7 @@ def verify(executable, report):
         require(self_check.get("capture_started") is False and self_check.get("gui_started") is False,
                 "Frozen self-check reported collection or a GUI")
         require(resources.get("map_count") == 18 and resources.get("candidate_count") == 3721
-                and resources.get("bundled_map_images") == 0, "Frozen resource counts differ from the public package")
+                and resources.get("bundled_map_images") == expected_map_images, "Frozen resource counts differ from the public package")
         report["self_check"] = {"ok": True, "frozen": True, "capture_started": False, "gui_started": False}
 
         directory = workspace / "empty-readonly-history"
@@ -212,6 +229,13 @@ def verify(executable, report):
                     and candidates.get("unique_count") == 3721 and candidates.get("source_count") == 3722
                     and sum(len(group.get("points", [])) for group in candidates.get("maps", {}).values()) == 3721,
                     "HTTP candidate dataset counts are incorrect")
+            for relative in ("1110.webp", "1110/4_4.webp"):
+                with opener.open(base + "/maps/" + relative, timeout=2) as response:
+                    require(response.code == 200, "The offline service did not serve a bundled map image")
+                    raw = response.read(8 * 1024 * 1024 + 1)
+                require(len(raw) <= 8 * 1024 * 1024
+                        and hashlib.sha256(raw).hexdigest() == map_manifest["map_assets"][relative]["sha256"],
+                        "HTTP map overview or tile does not match the bundled resource")
 
             state = owned_state(opener, base, process, directory)
             status, rejection = json_request(opener, base, "/api/control", action="resume", token=state["control_token"])
@@ -224,6 +248,7 @@ def verify(executable, report):
             report["service"] = {"identity_and_version": True, "owned_child": True, "temporary_data": True,
                                  "mode": "offline", "readonly": True, "history_records": 0, "map_count": 18,
                                  "candidate_count": 3721, "candidate_source_count": 3722,
+                                 "map_images": expected_map_images, "overview_and_tile_http_verified": True,
                                  "authenticated_resume_rejected": True, "captured_packets": 0,
                                  "proxy_disabled": True, "redirects_disabled": True}
         finally:

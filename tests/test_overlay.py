@@ -13,7 +13,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from aion2_redbag_map.overlay import (DesktopOverlay, NoRedirect, OverlayLock, OverlayState, approximate_distance,
-                     bag_focus_scale, target_indicator, display_status, latest_time, load_settings, local_clock, main,
+                     bag_focus_scale, target_indicator, display_status, latest_time, load_candidates, load_settings, local_clock, main,
                      player_reference, queue_latest_event, render_map_frame, TILE_CACHE_LIMIT,
                      visible_records, visible_tiles)
 from aion2_redbag_map.overlay_text import TEXT, text
@@ -58,6 +58,13 @@ def headless_view():
     view.raster_mode = "overview"
     view.collapsed = False
     view.tile_photos = OrderedDict()
+    view.candidates = {}
+    view.show_candidates = True
+    view.candidate_render_key = None
+    view.candidate_click_points = []
+    view.click_points = []
+    view.map_drag = None
+    view.map_dragged = False
     view.paint = Mock()
     view.save_settings = Mock()
     return view
@@ -144,7 +151,7 @@ class OverlayModelTests(unittest.TestCase):
             path = root / "settings.json"
             path.write_text(json.dumps({"x": 150, "y": 100, "alpha": 5, "collapsed": True, "layer": "true"}), encoding="utf-8")
             self.assertEqual(load_settings(path), {"x": 150, "y": 100, "alpha": 1.0, "collapsed": True,
-                                                  "layer": False, "follow": True, "follow_centering_version": 0})
+                                                  "layer": False, "show_candidates": True, "follow": True, "follow_centering_version": 0})
             path.write_text(json.dumps({"alpha": .75}), encoding="utf-8")
             self.assertEqual(load_settings(path)["alpha"], .75)
             path.write_text(json.dumps({"follow": False}), encoding="utf-8")
@@ -233,38 +240,109 @@ class OverlayModelTests(unittest.TestCase):
         self.assertIsNone(approximate_distance(reference, record(x=float("inf"))))
         self.assertIsNone(approximate_distance({**reference, "fresh": False}, record()))
 
-    def test_locked_reference_stays_centered_through_manual_controls_until_explicitly_unlocked(self):
+    def test_drag_releases_follow_and_new_positions_do_not_pull_the_view_back(self):
         view = headless_view()
         view.state.accept(positioned(), 12001)
         view.center_on_player(view.state.follow_target(12001))
         reference = (player()["x"], player()["y"])
         view.fit(manual=False)
         self.assertTrue(view.state.follow)
-        view.fit()
-        self.assertTrue(view.state.follow)
         self.assertEqual((view.cx, view.cy), reference)
         view.locate(record("elsewhere", map_id=1010))
         self.assertEqual(view.state.selected, "elsewhere")
         self.assertEqual(view.state.map_id, 1110)
         view.locate_latest()
-        view.begin_pan(SimpleNamespace(x=10, y=10))
-        view.pan(SimpleNamespace(x=30, y=10))
-        self.assertTrue(view.state.follow)
-        self.assertEqual((view.cx, view.cy), reference)
         view.zoom(1.5, 7, 11)
         self.assertEqual(view.screen(*reference), (view.width / 2, view.height / 2))
-        self.assertTrue(view.state.follow)
-        view.toggle_follow()
-        self.assertFalse(view.state.follow)
         view.begin_pan(SimpleNamespace(x=10, y=10))
+        view.pan(SimpleNamespace(x=12, y=11))
+        self.assertTrue(view.state.follow, "a click or slight pointer movement must not release follow")
         view.pan(SimpleNamespace(x=30, y=10))
+        self.assertFalse(view.state.follow)
+        view.end_pan(SimpleNamespace(x=30, y=10))
         self.assertNotEqual((view.cx, view.cy), reference)
+        panned = (view.cx, view.cy)
+        with patch("aion2_redbag_map.overlay.time.time", return_value=12002):
+            result = view.state.accept({**positioned(), "player": player(x=110000, observed_at=12002, expires_at=12012)}, 12002)
+            view.apply_update(result)
+        self.assertEqual((view.cx, view.cy), panned)
         view.locate(record("elsewhere", map_id=1010))
         self.assertEqual(view.state.map_id, 1010)
         view.toggle_follow()
         self.assertTrue(view.state.follow)
         self.assertEqual(view.state.map_id, 1110)
-        self.assertEqual(view.screen(*reference), (view.width / 2, view.height / 2))
+        self.assertEqual(view.screen(110000, reference[1]), (view.width / 2, view.height / 2))
+
+    def test_fit_releases_follow_and_does_not_clear_observations(self):
+        view = headless_view()
+        view.state.accept(positioned(), 12001)
+        before = copy.deepcopy(view.state.snapshot)
+        view.fit()
+        self.assertFalse(view.state.follow)
+        self.assertEqual(view.state.snapshot, before)
+        self.assertEqual(view.scale, view.fit_scale)
+        self.assertEqual((view.cx, view.cy), (100000, 100000))
+
+    def test_clear_target_preserves_history_and_alert_cursor_until_a_new_alert(self):
+        model = OverlayState()
+        model.accept(positioned(), 12001)
+        data = positioned(alert_seq=1, latest_alert={"record_id": "A"})
+        model.accept(data, 12002)
+        self.assertEqual(model.selected, "A")
+        original = copy.deepcopy(model.snapshot)
+        model.clear_target()
+        self.assertIsNone(model.selected)
+        self.assertIsNone(model.new_alert)
+        self.assertEqual(model.alert_until, 0)
+        for at in (12003, 12004, 12005):
+            result = model.accept(data, at)
+            self.assertIsNone(result["alert"])
+            self.assertIsNone(model.selected)
+        self.assertEqual(model.snapshot, original)
+        model.accept(positioned(rows=[record("B")], alert_seq=2, latest_alert={"record_id": "B"}), 12006)
+        self.assertEqual(model.selected, "B")
+
+    def test_candidates_render_select_hide_and_do_not_become_live_observations(self):
+        view = headless_view()
+        view.candidates = load_candidates()
+        self.assertEqual(sum(map(len, view.candidates.values())), 3721)
+        self.assertEqual(len(view.candidates[1110]), 1370)
+        view.state.accept(snapshot(rows=[]), 12000)
+        view.canvas = Mock()
+        view.cx, view.cy, view.scale = 0, 0, .0003
+        view.paint_candidates()
+        self.assertGreater(len(view.click_points), 0)
+        initial_draws = view.canvas.create_polygon.call_count
+        view.paint_candidates()
+        self.assertEqual(view.canvas.create_polygon.call_count, initial_draws, "stationary candidates must be cached")
+        x, y, row = view.click_points[0]
+        view.begin_pan(SimpleNamespace(x=x, y=y))
+        view.end_pan(SimpleNamespace(x=x, y=y))
+        self.assertEqual(view.selected_target(), row)
+        self.assertEqual(display_status(row, 12000), "candidate")
+        self.assertEqual(view.state.snapshot["records"], [])
+        self.assertEqual(view.state.seq, 0)
+        view.toggle_candidates()
+        view.paint_candidates()
+        self.assertFalse(view.show_candidates)
+        self.assertEqual(view.click_points, [])
+        self.assertIsNone(view.state.selected)
+        view.toggle_candidates()
+        view.paint_candidates()
+        self.assertTrue(view.click_points)
+
+    def test_dragging_back_to_origin_does_not_select_a_marker_and_record_wins_exact_overlap(self):
+        view = headless_view()
+        candidate = {"id": "candidate-1110-1", "kind": "historical_candidate"}
+        view.click_points = [(10, 10, candidate), (10, 10, record("real"))]
+        view.begin_pan(SimpleNamespace(x=10, y=10))
+        view.pan(SimpleNamespace(x=30, y=10))
+        view.pan(SimpleNamespace(x=10, y=10))
+        view.end_pan(SimpleNamespace(x=10, y=10))
+        self.assertIsNone(view.state.selected)
+        view.begin_pan(SimpleNamespace(x=10, y=10))
+        view.end_pan(SimpleNamespace(x=10, y=10))
+        self.assertEqual(view.state.selected, "real")
 
     def test_stale_or_missing_reference_never_allows_alerts_to_move_locked_map(self):
         for initial in (snapshot(), positioned()):
@@ -494,7 +572,7 @@ class OverlayModelTests(unittest.TestCase):
         self.assertEqual(status["player_observed_at"], 12000)
         self.assertEqual(status["player_map_id"], 1110)
         self.assertEqual((status["cx"], status["cy"]), (view.cx, view.cy))
-        self.assertEqual(status["overlay_version"], "1.3.0")
+        self.assertEqual(status["overlay_version"], "1.3.1")
         self.assertEqual(status["poll_interval_ms"], 200)
         self.assertEqual(status["ui_tick_ms"], 100)
         self.assertEqual(status["base_map_mode"], "overview")

@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark light">
   <title data-i18n="红色背包 · AION2 地图">红色背包 · AION2 地图</title>
-  <link rel="stylesheet" href="/style.css?v=1.2.0-position">
-  <script src="/i18n.js?v=1.2.2-bag-focus" defer></script>
-  <script src="/app.js?v=1.2.2-bag-focus" defer></script>
+  <link rel="stylesheet" href="/style.css?v=1.3.0-target-controls">
+  <script src="/i18n.js?v=1.3.0-target-controls" defer></script>
+  <script src="/app.js?v=1.3.0-target-controls" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -46,7 +46,7 @@
       </div>
 
       <section class="selected-card" id="selected-card" hidden aria-label="选中位置详情" data-i18n-aria-label="选中位置详情">
-        <div class="selected-heading"><span data-i18n="选中位置">选中位置</span><button class="icon-button small" id="clear-selection" type="button" aria-label="关闭位置详情" data-i18n-aria-label="关闭位置详情">×</button></div>
+        <div class="selected-heading"><span data-i18n="选中位置">选中位置</span><button class="icon-button small" id="clear-selection" type="button" aria-label="关闭详情并取消目标连线" data-i18n-aria-label="关闭详情并取消目标连线" title="关闭详情并取消目标连线" data-i18n-title="关闭详情并取消目标连线">×</button></div>
         <div class="selected-title"><strong id="selected-name" data-i18n="红色背包">红色背包</strong><span class="record-status" id="selected-status"></span></div>
         <div class="selected-coordinates" id="selected-coordinates"></div>
         <p class="selected-distance" id="selected-distance"></p>
@@ -93,6 +93,7 @@
         <span class="player-symbol" aria-hidden="true">●</span>
         <div class="player-info"><div><strong id="player-status" data-i18n="等待地图与角色参考位置">等待地图与角色参考位置</strong><span id="player-age"></span></div><span class="player-coordinates" id="player-coordinates"></span></div>
         <button class="secondary-button" id="follow-player" type="button" aria-pressed="false" title="新参考位置到达时居中；拖动地图退出跟随。" data-i18n-title="新参考位置到达时居中；拖动地图退出跟随。" data-i18n="跟随角色" disabled>跟随角色</button>
+        <button class="secondary-button clear-target-button" id="clear-target" type="button" title="清除当前目标、连线和箭头，保留历史记录；新提醒仍会显示。" data-i18n-title="清除当前目标、连线和箭头，保留历史记录；新提醒仍会显示。" data-i18n="取消连线" disabled>取消连线</button>
       </section>
 
       <div class="map-stage" id="map-stage">

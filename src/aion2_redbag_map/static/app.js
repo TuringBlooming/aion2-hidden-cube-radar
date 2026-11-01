@@ -296,6 +296,17 @@
     renderRecords(true); requestPaint();
   }
 
+  function clearTarget() {
+    state.selected = null; state.selectedCandidate = null;
+    state.alertRecord = null; state.flashId = null; state.flashUntil = 0;
+    activeAlert = null; view.hover = null;
+    clearTimeout(alertTimer); alertTimer = null;
+    $("alert-banner").hidden = true; $("alert-locate").hidden = true;
+    $("marker-tooltip").hidden = true; $("candidate-index").value = "";
+    // Keep observations and the alert sequence: polling must not restore a dismissed target.
+    renderRecords(true); requestPaint();
+  }
+
   function renderRecords(force = false) {
     const records = mapRecords().sort(newestFirst);
     const { other } = storageSummary();
@@ -324,7 +335,9 @@
   }
 
   function renderSelected() {
-    const candidate = selectedCandidate(), item = selectedRecord() || candidate; $("selected-card").hidden = !item; if (!item) return;
+    const candidate = selectedCandidate(), item = selectedRecord() || candidate;
+    $("clear-target").disabled = !item && state.alertRecord === null && state.flashId === null;
+    $("selected-card").hidden = !item; if (!item) return;
     const distance = playerDistance(item), player = playerOnMap();
     $("selected-distance").textContent = distance !== null ? t("平面直线约 {distance} 米", { distance: number(distance) }) : player?.stale ? t("位置已过期，暂不计算距离") : t("等待本图新的角色参考位置以计算距离");
     $("selected-distance").classList.toggle("unavailable", distance === null);
@@ -612,7 +625,8 @@
   $("map-select").addEventListener("change", async event => { setFollowPlayer(false); const previous = state.mapId; if (!(await control("map", { map_id: Number(event.target.value) }))) $("map-select").value = String(previous); });
   for (const tab of document.querySelectorAll(".filter-tab")) tab.addEventListener("click", () => { state.filter = tab.dataset.filter; for (const other of document.querySelectorAll(".filter-tab")) { other.classList.toggle("active", other === tab); other.setAttribute("aria-pressed", String(other === tab)); } renderRecords(true); requestPaint(); });
   $("latest-button").addEventListener("click", () => { const item = mapRecords().sort(newestFirst)[0]; if (item) { if (!inFilter(item)) { document.querySelector('[data-filter="all"]').click(); } selectRecord(item.id, true); } });
-  $("clear-selection").addEventListener("click", () => { state.selected = null; state.selectedCandidate = null; renderRecords(true); requestPaint(); });
+  $("clear-selection").addEventListener("click", clearTarget);
+  $("clear-target").addEventListener("click", clearTarget);
   $("copy-coordinates").addEventListener("click", async () => {
     const candidate = selectedCandidate(), item = selectedRecord() || candidate; if (!item) return;
     const window = !candidate ? refreshWindow(item) : null;

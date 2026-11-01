@@ -14,9 +14,24 @@ has not been confirmed. Attribution is not permission. This project does not
 relicense that upstream material as MIT. Resolve the upstream rights before
 public redistribution of this dataset or a binary containing it.
 
-Map calibration in the old private package and game map images are not included.
-The bundled map bounds are a generic coordinate grid. Users may import map resources
-they have the right to use. Imported resources remain local and outside this repository.
+## Map artwork and calibration
+
+`src/aion2_redbag_map/static/maps/` includes all 339 existing WebP files: 18 overview
+images and 321 detailed tiles. `src/aion2_redbag_map/maps.json` contains the matching
+calibration for 18 maps. They were originally obtained from the A2Helper 0.1.25
+distribution and verified unchanged against its 0.1.29 release. The source release,
+verification date and per-image SHA-256 values are preserved in
+`src/aion2_redbag_map/map-source.json`.
+
+These resources are included in the source repository and Windows package at the
+project author's request. Copyright and other rights remain with the original
+rightsholders. An applicable upstream redistribution license has not been confirmed;
+the project's MIT license does not grant rights to relicense this artwork or
+calibration. Inclusion and attribution are not permission or official endorsement.
+Users may optionally import matching resources they have the right to use; imported
+geometry and same-named images override the bundled versions locally.
+
+## Protocol research
 
 The wire format was researched using local traffic samples and static inspection of
 A2Helper's distribution. The parser is this project's Python implementation; this

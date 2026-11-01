@@ -1,182 +1,209 @@
 [
   {
-    "id": 20,
     "name": "Reshanta Inferior",
-    "english_name": "Reshanta Inferior",
-    "x": -500000,
-    "y": -500000,
-    "w": 1000000,
-    "h": 1000000,
-    "bounds_kind": "coordinate_grid"
+    "x": -204000.0,
+    "y": -204000.0,
+    "w": 408000.0,
+    "h": 408000.0,
+    "tiles": [
+      4,
+      4
+    ],
+    "id": 20,
+    "english_name": "Reshanta Inferior"
   },
   {
-    "id": 22,
     "name": "Reshanta Média",
-    "english_name": "Reshanta Média",
-    "x": -500000,
-    "y": -500000,
-    "w": 1000000,
-    "h": 1000000,
-    "bounds_kind": "coordinate_grid"
+    "x": -102000.0,
+    "y": -102000.0,
+    "w": 204000.0,
+    "h": 204000.0,
+    "tiles": [
+      2,
+      2
+    ],
+    "id": 22,
+    "english_name": "Reshanta Média"
   },
   {
-    "id": 23,
     "name": "Reshanta Superior",
-    "english_name": "Reshanta Superior",
-    "x": -500000,
-    "y": -500000,
-    "w": 1000000,
-    "h": 1000000,
-    "bounds_kind": "coordinate_grid"
+    "x": -102000.0,
+    "y": -102000.0,
+    "w": 204000.0,
+    "h": 204000.0,
+    "tiles": [
+      2,
+      2
+    ],
+    "id": 23,
+    "english_name": "Reshanta Superior"
   },
   {
-    "id": 1000,
     "name": "Poeta",
-    "english_name": "Poeta",
-    "x": -500000,
-    "y": -500000,
-    "w": 1000000,
-    "h": 1000000,
-    "bounds_kind": "coordinate_grid"
+    "x": -204000.0,
+    "y": -204000.0,
+    "w": 408000.0,
+    "h": 408000.0,
+    "tiles": [
+      4,
+      4
+    ],
+    "id": 1000,
+    "english_name": "Poeta"
   },
   {
-    "id": 1010,
     "name": "Verteron",
-    "english_name": "Verteron",
-    "x": -500000,
-    "y": -500000,
-    "w": 1000000,
-    "h": 1000000,
-    "bounds_kind": "coordinate_grid"
+    "x": -408000.0,
+    "y": -408000.0,
+    "w": 816000.0,
+    "h": 816000.0,
+    "tiles": [
+      8,
+      8
+    ],
+    "id": 1010,
+    "english_name": "Verteron"
   },
   {
-    "id": 1011,
     "name": "Eltnen",
-    "english_name": "Eltnen",
-    "x": -500000,
-    "y": -500000,
-    "w": 1000000,
-    "h": 1000000,
-    "bounds_kind": "coordinate_grid"
+    "x": -408000.0,
+    "y": -408000.0,
+    "w": 816000.0,
+    "h": 816000.0,
+    "tiles": [
+      8,
+      8
+    ],
+    "id": 1011,
+    "english_name": "Eltnen"
   },
   {
-    "id": 1100,
     "name": "Ishalgen",
-    "english_name": "Ishalgen",
-    "x": -500000,
-    "y": -500000,
-    "w": 1000000,
-    "h": 1000000,
-    "bounds_kind": "coordinate_grid"
+    "x": -329748,
+    "y": -257999.78,
+    "w": 510000.0,
+    "h": 510000.0,
+    "tiles": [
+      5,
+      5
+    ],
+    "id": 1100,
+    "english_name": "Ishalgen"
   },
   {
+    "name": "阿尔特盖德",
+    "x": -408000.0,
+    "y": -408000.0,
+    "w": 816000.0,
+    "h": 816000.0,
+    "tiles": [
+      8,
+      8
+    ],
     "id": 1110,
-    "name": "Altgard",
-    "english_name": "Altgard",
-    "x": -500000,
-    "y": -500000,
-    "w": 1000000,
-    "h": 1000000,
-    "bounds_kind": "coordinate_grid"
+    "english_name": "Altgard"
   },
   {
-    "id": 1111,
     "name": "Morheim",
-    "english_name": "Morheim",
-    "x": -500000,
-    "y": -500000,
-    "w": 1000000,
-    "h": 1000000,
-    "bounds_kind": "coordinate_grid"
+    "x": -408000.0,
+    "y": -408000.0,
+    "w": 816000.0,
+    "h": 816000.0,
+    "tiles": [
+      8,
+      8
+    ],
+    "id": 1111,
+    "english_name": "Morheim"
   },
   {
+    "name": "Caverna de Krao",
+    "group": "dungeon",
+    "x": -49106,
+    "y": -9006,
+    "w": 47124,
+    "h": 47124,
     "id": 600001,
-    "name": "Caverna de Krao",
-    "english_name": "Caverna de Krao",
-    "x": -500000,
-    "y": -500000,
-    "w": 1000000,
-    "h": 1000000,
-    "bounds_kind": "coordinate_grid"
+    "english_name": "Caverna de Krao"
   },
   {
+    "name": "Caverna de Krao",
+    "group": "dungeon",
+    "x": -49106,
+    "y": -9006,
+    "w": 47124,
+    "h": 47124,
     "id": 600002,
-    "name": "Caverna de Krao",
-    "english_name": "Caverna de Krao",
-    "x": -500000,
-    "y": -500000,
-    "w": 1000000,
-    "h": 1000000,
-    "bounds_kind": "coordinate_grid"
+    "english_name": "Caverna de Krao"
   },
   {
+    "name": "Caverna de Krao",
+    "group": "dungeon",
+    "x": -49106,
+    "y": -9006,
+    "w": 47124,
+    "h": 47124,
     "id": 600004,
-    "name": "Caverna de Krao",
-    "english_name": "Caverna de Krao",
-    "x": -500000,
-    "y": -500000,
-    "w": 1000000,
-    "h": 1000000,
-    "bounds_kind": "coordinate_grid"
+    "english_name": "Caverna de Krao"
   },
   {
+    "name": "Templo Divino do Fogo",
+    "group": "dungeon",
+    "x": -31589,
+    "y": -28262,
+    "w": 54784,
+    "h": 54784,
     "id": 600021,
-    "name": "Templo Divino do Fogo",
-    "english_name": "Templo Divino do Fogo",
-    "x": -500000,
-    "y": -500000,
-    "w": 1000000,
-    "h": 1000000,
-    "bounds_kind": "coordinate_grid"
+    "english_name": "Templo Divino do Fogo"
   },
   {
+    "name": "Templo Divino do Fogo",
+    "group": "dungeon",
+    "x": -31589,
+    "y": -28262,
+    "w": 54784,
+    "h": 54784,
     "id": 600022,
-    "name": "Templo Divino do Fogo",
-    "english_name": "Templo Divino do Fogo",
-    "x": -500000,
-    "y": -500000,
-    "w": 1000000,
-    "h": 1000000,
-    "bounds_kind": "coordinate_grid"
+    "english_name": "Templo Divino do Fogo"
   },
   {
+    "name": "Templo Divino do Fogo",
+    "group": "dungeon",
+    "x": -31589,
+    "y": -28262,
+    "w": 54784,
+    "h": 54784,
     "id": 600023,
-    "name": "Templo Divino do Fogo",
-    "english_name": "Templo Divino do Fogo",
-    "x": -500000,
-    "y": -500000,
-    "w": 1000000,
-    "h": 1000000,
-    "bounds_kind": "coordinate_grid"
+    "english_name": "Templo Divino do Fogo"
   },
   {
+    "name": "Draupnir",
+    "group": "dungeon",
+    "x": -55898,
+    "y": -27649,
+    "w": 64514,
+    "h": 64514,
     "id": 600031,
-    "name": "Draupnir",
-    "english_name": "Draupnir",
-    "x": -500000,
-    "y": -500000,
-    "w": 1000000,
-    "h": 1000000,
-    "bounds_kind": "coordinate_grid"
+    "english_name": "Draupnir"
   },
   {
+    "name": "Draupnir",
+    "group": "dungeon",
+    "x": -55898,
+    "y": -27649,
+    "w": 64514,
+    "h": 64514,
     "id": 600032,
-    "name": "Draupnir",
-    "english_name": "Draupnir",
-    "x": -500000,
-    "y": -500000,
-    "w": 1000000,
-    "h": 1000000,
-    "bounds_kind": "coordinate_grid"
+    "english_name": "Draupnir"
   },
   {
-    "id": 600033,
     "name": "Draupnir",
-    "english_name": "Draupnir",
-    "x": -500000,
-    "y": -500000,
-    "w": 1000000,
-    "h": 1000000,
-    "bounds_kind": "coordinate_grid"
+    "group": "dungeon",
+    "x": -55898,
+    "y": -27649,
+    "w": 64514,
+    "h": 64514,
+    "id": 600033,
+    "english_name": "Draupnir"
   }
 ]

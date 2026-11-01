@@ -29,7 +29,7 @@ OVERLAY_VERSION = __version__
 FOLLOW_CENTERING_VERSION = 1
 BACKGROUND = "#171e28"
 TRANSPARENT = "#010203"
-COLORS = {"seen": "#ed625b", "used": "#e5ad49", "opened": "#83ab92", "unknown": "#a2abb9", "soon": "#b875df"}
+COLORS = {"seen": "#ed625b", "used": "#e5ad49", "opened": "#83ab92", "unknown": "#a2abb9", "soon": "#b875df", "candidate": "#6bb7d6"}
 PLAYER_COLOR = "#54d8ea"
 PLAYER_MAX_AGE = 10
 POLL_INTERVAL = .2
@@ -37,7 +37,7 @@ UI_TICK_MS = 100
 TILE_CACHE_LIMIT = 24
 DEFAULT_FOLLOW_ZOOM = 20
 BAG_FOCUS_SPAN = 24000  # About 240 metres across the smaller viewport dimension.
-EXPANDED_HEIGHT = 540
+EXPANDED_HEIGHT = 575
 
 
 def positive(value):
@@ -51,6 +51,8 @@ def latest_time(record):
 
 
 def display_status(record, now):
+    if record.get("kind") == "historical_candidate":
+        return "candidate"
     anchor = latest_time(record)
     if anchor is not None and not record.get("superseded_by"):
         cycle = max(1, math.floor((now - anchor - 300) / 3600) + 1)
@@ -65,6 +67,31 @@ def visible_records(snapshot, map_id):
             if isinstance(row, dict) and isinstance(row.get("id"), str)
             and row.get("map_id") == map_id and not row.get("superseded_by")
             and all(type(row.get(c)) in (int, float) and math.isfinite(row[c]) for c in ("x", "y"))]
+
+
+def load_candidates(path=None):
+    """Load historical locations locally. They never enter live records or alerts."""
+    try:
+        data = json.loads(Path(path or ROOT / "static/candidates.json").read_text("utf-8"))
+        groups = data.get("maps", {})
+        if not isinstance(groups, dict):
+            return {}
+        result = {}
+        for group in groups.values():
+            if not isinstance(group, dict) or type(group.get("map_id")) is not int:
+                continue
+            rows = group.get("points")
+            if not isinstance(rows, list):
+                continue
+            map_id = group["map_id"]
+            result[map_id] = [dict(row, kind="historical_candidate") for row in rows
+                              if isinstance(row, dict) and isinstance(row.get("id"), str)
+                              and row["id"].startswith(f"candidate-{map_id}-") and row.get("map_id") == map_id
+                              and type(row.get("ordinal")) is int and row["ordinal"] > 0
+                              and all(type(row.get(c)) in (int, float) and math.isfinite(row[c]) for c in ("x", "y"))]
+        return result
+    except (OSError, ValueError, TypeError):
+        return {}
 
 
 def local_clock(value):
@@ -221,6 +248,11 @@ class OverlayState:
     def set_follow(self, enabled):
         self.follow = bool(enabled)
 
+    def clear_target(self):
+        self.selected = None
+        self.new_alert = None
+        self.alert_until = 0
+
     def accept(self, snapshot, at=None):
         if not isinstance(snapshot, dict) or snapshot.get("app") != "AION2 RedBag Map":
             raise ValueError("unexpected local application")
@@ -313,6 +345,7 @@ def load_settings(path):
         result["alpha"] = data.get("alpha") if type(data.get("alpha")) in (int, float) and .45 <= data["alpha"] <= 1 else 1.0
         result["collapsed"] = data.get("collapsed") is True
         result["layer"] = data.get("layer") is True
+        result["show_candidates"] = data.get("show_candidates") is not False
         version = data.get("follow_centering_version")
         result["follow_centering_version"] = version if type(version) is int else 0
         result["follow"] = (data.get("follow") is not False
@@ -360,6 +393,10 @@ class DesktopOverlay:
         self.settings = load_settings(self.settings_path)
         self.state = OverlayState(follow=self.settings.get("follow", True))
         self.maps = load_maps(self.settings_path.parent)
+        self.candidates = load_candidates()
+        self.show_candidates = self.settings.get("show_candidates", True)
+        self.candidate_render_key = None
+        self.candidate_click_points = []
         self.map_assets = self.settings_path.parent / "assets/maps"
         self.language = "zh-CN"
         self.port = port
@@ -380,6 +417,7 @@ class DesktopOverlay:
         self.alpha = self.settings.get("alpha", 1.0)
         self.drag_origin = None
         self.map_drag = None
+        self.map_dragged = False
         self.click_points = []
         self.window_flags = {}
         self.root = tk.Tk()
@@ -396,7 +434,7 @@ class DesktopOverlay:
         x = max(0, min(x, max(0, self.root.winfo_screenwidth() - 100)))
         y = max(0, min(y, max(0, self.root.winfo_screenheight() - 45)))
         self.root.geometry(f"360x{45 if self.collapsed else EXPANDED_HEIGHT}+{x}+{y}")
-        self.root.bind("<Escape>", lambda _event: self.toggle_collapse())
+        self.root.bind("<Escape>", lambda _event: self.clear_target() if self.state.selected else self.toggle_collapse())
         self.root.protocol("WM_DELETE_WINDOW", self.close)
         self.header = tk.Frame(self.root, bg="#263142", height=45)
         self.header.pack(fill="x")
@@ -435,12 +473,19 @@ class DesktopOverlay:
         self.layer_button.pack(side="left", padx=2)
         self.alpha_button = self.button(self.toolbar, f"{self.alpha:.0%}", self.change_alpha, width=4)
         self.alpha_button.pack(side="right", padx=2)
+        self.point_toolbar = tk.Frame(self.body, bg=BACKGROUND)
+        self.point_toolbar.pack(fill="x", padx=7, pady=(0, 5))
+        self.candidate_button = self.button(self.point_toolbar, text("candidates", count=0), self.toggle_candidates)
+        self.candidate_button.pack(side="left", padx=2)
+        self.clear_button = self.button(self.point_toolbar, text("clear_target"), self.clear_target)
+        self.clear_button.pack(side="right", padx=2)
         self.canvas = tk.Canvas(self.body, width=360, height=300, bg="#d4c8b2", highlightthickness=0, cursor="fleur")
         self.canvas.bind("<Configure>", self.resize)
         self.canvas.bind("<MouseWheel>", lambda event: self.zoom(1.3 if event.delta > 0 else 1 / 1.3, event.x, event.y))
         self.canvas.bind("<ButtonPress-1>", self.begin_pan)
         self.canvas.bind("<B1-Motion>", self.pan)
         self.canvas.bind("<ButtonRelease-1>", self.end_pan)
+        self.canvas.bind("<Button-3>", lambda _event: self.clear_target())
         self.detail_label = tk.Label(self.body, text=text("empty"), anchor="w", justify="left", bg=BACKGROUND,
                                      fg="#d7e2ed", font=("Microsoft YaHei UI", 9), padx=9, pady=5, wraplength=342, height=4)
         self.hint_label = tk.Label(self.body, text=text("hint"), bg=BACKGROUND, fg="#899bb3",
@@ -485,8 +530,10 @@ class DesktopOverlay:
                 "y": (low_y + high_y - span) / 2, "w": span, "h": span}
 
     def fit(self, manual=True):
+        if manual and self.state.follow:
+            self.state.set_follow(False)
         player = self.state.follow_target()
-        if self.state.follow and (manual or player):
+        if self.state.follow and player:
             if player:
                 self.center_on_player(player)
             self.paint()
@@ -555,23 +602,68 @@ class DesktopOverlay:
 
     def begin_pan(self, event):
         self.map_drag = (event.x, event.y, self.cx, self.cy)
+        self.map_dragged = False
 
     def pan(self, event):
-        if self.map_drag and not self.state.follow:
+        if self.map_drag:
             x, y, cx, cy = self.map_drag
+            if not self.map_dragged:
+                if math.hypot(event.x - x, event.y - y) < 5:
+                    return
+                self.map_dragged = True
+                self.state.set_follow(False)
+                self.save_settings()
             self.cx, self.cy = cx - (event.x - x) / self.scale, cy - (event.y - y) / self.scale
             self.render_key = None
             self.paint()
 
     def end_pan(self, event):
-        if self.map_drag and math.hypot(event.x - self.map_drag[0], event.y - self.map_drag[1]) < 5:
+        if self.map_drag and not self.map_dragged and math.hypot(event.x - self.map_drag[0], event.y - self.map_drag[1]) < 5:
             nearby = [(math.hypot(event.x - x, event.y - y), row) for x, y, row in self.click_points]
             if nearby:
-                distance, row = min(nearby, key=lambda pair: pair[0])
+                distance, row = min(nearby, key=lambda pair: (pair[0], pair[1].get("kind") == "historical_candidate"))
                 if distance < 15:
+                    self.state.clear_target()
                     self.state.selected = row["id"]
                     self.paint()
         self.map_drag = None
+        self.map_dragged = False
+
+    def clear_target(self):
+        self.state.clear_target()
+        self.paint()
+
+    def toggle_candidates(self):
+        self.show_candidates = not self.show_candidates
+        if not self.show_candidates and any(row["id"] == self.state.selected for group in self.candidates.values() for row in group):
+            self.state.clear_target()
+        self.save_settings()
+        self.paint()
+
+    def selected_target(self):
+        found = next((row for row in self.state.snapshot.get("records", [])
+                      if isinstance(row, dict) and row.get("id") == self.state.selected), None)
+        if found:
+            return found
+        if self.show_candidates:
+            return next((row for group in self.candidates.values() for row in group if row["id"] == self.state.selected), None)
+        return None
+
+    def paint_candidates(self):
+        key = (self.state.map_id, self.width, self.height, self.cx, self.cy, self.scale, self.show_candidates)
+        if self.candidate_render_key != key:
+            self.canvas.delete("candidate")
+            self.candidate_click_points = []
+            if self.show_candidates:
+                for row in self.candidates.get(self.state.map_id, []):
+                    x, y = self.screen(row["x"], row["y"])
+                    if not -10 < x < self.width + 10 or not -10 < y < self.height + 10:
+                        continue
+                    self.canvas.create_polygon(x, y - 4, x + 4, y, x, y + 4, x - 4, y,
+                                               fill="#25485b", outline=COLORS["candidate"], width=1, tags="candidate")
+                    self.candidate_click_points.append((x, y, row))
+            self.candidate_render_key = key
+        self.click_points = list(self.candidate_click_points)
 
     def locate(self, row, manual=True):
         self.state.selected = row["id"]
@@ -745,8 +837,12 @@ class DesktopOverlay:
         alert_active = now < self.state.alert_until
         title = f"● {name}" if alert_active else name
         self.title_label.configure(text=title, fg="#ffb0a7" if alert_active else "#f4e6d4")
-        self.fit_button.configure(text=text("fit", language), state="disabled" if self.state.follow else "normal")
+        self.fit_button.configure(text=text("fit", language), state="normal")
         self.latest_button.configure(text=text("latest", language))
+        self.candidate_button.configure(text=text("candidates" if self.show_candidates else "candidates_hidden", language,
+                                                  count=f"{len(self.candidates.get(self.state.map_id, [])):,}"),
+                                        bg="#255463" if self.show_candidates else "#334155")
+        self.clear_button.configure(text=text("clear_target", language), state="normal" if self.state.selected else "disabled")
         self.layer_button.configure(text=text("background" if self.layer else "layer", language))
         self.hint_label.configure(text=text("locked_hint" if self.state.follow else "layer_hint" if self.layer else "hint", language))
         if not self.state.snapshot:
@@ -769,20 +865,21 @@ class DesktopOverlay:
         follow_key = "following" if self.state.follow else "follow"
         self.follow_button.configure(text=text(follow_key, language),
                                      bg="#255463" if self.state.follow else "#334155")
-        selected = next((row for row in self.state.snapshot.get("records", [])
-                         if isinstance(row, dict) and row.get("id") == self.state.selected), None)
+        selected = self.selected_target()
         if selected:
             status = display_status(selected, now)
-            heading = text("new", language) if alert_active else text(status, language)
+            candidate = status == "candidate"
+            heading = text("candidate_number", language, count=selected["ordinal"]) if candidate else text("new", language) if alert_active else text(status, language)
             if selected["map_id"] != self.state.map_id:
                 heading = f"{heading} · {map_name(self.maps, selected['map_id'], language)}"
             distance = approximate_distance(player, selected)
             distance_label = "" if distance is None else f" · {text('distance_short', language, meters=round(distance))}"
-            self.detail_label.configure(text=f"{heading}\nX {selected['x']:.0f} / Y {selected['y']:.0f}\n"
-                                       f"{text('updated', language)} {local_clock(latest_time(selected))}{distance_label}",
+            timing = text("candidate_info", language) if candidate else f"{text('updated', language)} {local_clock(latest_time(selected))}"
+            self.detail_label.configure(text=f"{heading}\nX {selected['x']:.0f} / Y {selected['y']:.0f}\n{timing}{distance_label}",
                                        fg=COLORS[status])
         else:
-            self.detail_label.configure(text=text("empty", language) if not rows else text("locked_hint" if self.state.follow else "hint", language), fg="#d7e2ed")
+            hint = "browse_candidates" if self.show_candidates and self.candidates.get(self.state.map_id) else "empty" if not rows else "locked_hint" if self.state.follow else "hint"
+            self.detail_label.configure(text=text(hint, language), fg="#d7e2ed")
         if self.collapsed:
             return
         bounds = self.current_map()
@@ -818,13 +915,13 @@ class DesktopOverlay:
             self.canvas.tag_lower("base")
             self.render_key = key
         self.canvas.delete("marker")
-        self.click_points = []
-        target = next((row for row in rows if row["id"] == self.state.selected), None)
+        self.paint_candidates()
+        target = selected if selected and selected["map_id"] == self.state.map_id else None
         indicator = target_indicator(*self.screen(target["x"], target["y"]), self.width, self.height) if target else None
         if indicator and player and player["map_id"] == self.state.map_id:
             px, py = self.screen(player["x"], player["y"])
             if math.hypot(indicator["x"] - px, indicator["y"] - py) > 28:
-                self.canvas.create_line(px, py, indicator["x"], indicator["y"], fill="#ffcab4",
+                self.canvas.create_line(px, py, indicator["x"], indicator["y"], fill=COLORS["candidate"] if target.get("kind") == "historical_candidate" else "#ffcab4",
                                         width=2, dash=(5, 5), tags="marker")
         for row in rows:
             if row["id"] == self.state.selected and indicator and indicator["outside"]:
@@ -877,14 +974,14 @@ class DesktopOverlay:
                       x - ux * 11 + uy * 9, y - uy * 11 - ux * 9)
             self.canvas.create_polygon(*points, fill=color, outline="#fff4df", width=2, tags="marker")
             self.click_points.append((x, y, target))
-            label_key = "bag_outside"
+            label_key = "candidate_outside" if status == "candidate" else "bag_outside"
         else:
             ring = 15 + (4 * abs(math.sin(now * 3)) if alert_active else 0)
             self.canvas.create_oval(x - ring, y - ring, x + ring, y + ring,
                                     outline="#fff4df", width=2, tags="marker")
             self.canvas.create_polygon(x, y - 10, x + 10, y, x, y + 10, x - 10, y,
                                        fill=color, outline="#fff4df", width=2, tags="marker")
-            label_key = "bag_target"
+            label_key = "candidate_target" if status == "candidate" else "bag_target"
         label = text(label_key, self.language)
         if target.get("status") == "opened":
             label += " · " + text("opened", self.language)
@@ -910,6 +1007,7 @@ class DesktopOverlay:
     def save_settings(self):
         data = {"x": self.root.winfo_x(), "y": self.root.winfo_y(), "alpha": self.alpha,
                 "collapsed": self.collapsed, "layer": self.layer, "follow": self.state.follow,
+                "show_candidates": self.show_candidates,
                 "follow_centering_version": FOLLOW_CENTERING_VERSION}
         if self.zoom_ratio is not None:
             data["zoom_ratio"] = self.zoom_ratio
@@ -922,8 +1020,8 @@ class DesktopOverlay:
         now = time.time()
         player = self.state.player(now)
         fresh = bool(player and player["fresh"])
-        target = next((row for row in visible_records(self.state.snapshot, self.state.map_id)
-                       if row["id"] == self.state.selected), None)
+        target = self.selected_target()
+        target = target if target and target["map_id"] == self.state.map_id else None
         indicator = target_indicator(*self.screen(target["x"], target["y"]), self.width, self.height) if target else None
         data = {"pid": os.getpid(), "running": not self.stopping.is_set(), "connected": self.state.connected,
                 "overlay_version": OVERLAY_VERSION, "poll_interval_ms": round(POLL_INTERVAL * 1000),
@@ -931,7 +1029,11 @@ class DesktopOverlay:
                 "tile_cache_count": len(self.tile_photos),
                 "api": f"http://127.0.0.1:{self.port}/api/state", "map_id": self.state.map_id,
                 "record_count": len(visible_records(self.state.snapshot, self.state.map_id)),
-                "selected_record": self.state.selected, "collapsed": self.collapsed, "transparent_layer": self.layer,
+                "candidate_count": len(self.candidates.get(self.state.map_id, [])),
+                "candidates_visible": self.show_candidates, "selected_target": self.state.selected,
+                "selected_record": self.state.selected if not (target and target.get("kind") == "historical_candidate") else None,
+                "selected_candidate": self.state.selected if target and target.get("kind") == "historical_candidate" else None,
+                "collapsed": self.collapsed, "transparent_layer": self.layer,
                 "target_offscreen": indicator["outside"] if indicator else None,
                 "zoom_ratio": self.scale / self.fit_scale,
                 "following": self.state.follow, "follow_enabled": self.state.follow,
