@@ -63,6 +63,7 @@ def headless_view():
     view.candidate_render_key = None
     view.candidate_click_points = []
     view.click_points = []
+    view.marker_photo = Mock(return_value="test-marker")
     view.map_drag = None
     view.map_dragged = False
     view.paint = Mock()
@@ -312,9 +313,10 @@ class OverlayModelTests(unittest.TestCase):
         view.cx, view.cy, view.scale = 0, 0, .0003
         view.paint_candidates()
         self.assertGreater(len(view.click_points), 0)
-        initial_draws = view.canvas.create_polygon.call_count
+        initial_draws = view.canvas.create_image.call_count
+        self.assertGreater(initial_draws, 0)
         view.paint_candidates()
-        self.assertEqual(view.canvas.create_polygon.call_count, initial_draws, "stationary candidates must be cached")
+        self.assertEqual(view.canvas.create_image.call_count, initial_draws, "stationary candidates must be cached")
         x, y, row = view.click_points[0]
         view.begin_pan(SimpleNamespace(x=x, y=y))
         view.end_pan(SimpleNamespace(x=x, y=y))
@@ -572,7 +574,7 @@ class OverlayModelTests(unittest.TestCase):
         self.assertEqual(status["player_observed_at"], 12000)
         self.assertEqual(status["player_map_id"], 1110)
         self.assertEqual((status["cx"], status["cy"]), (view.cx, view.cy))
-        self.assertEqual(status["overlay_version"], "1.3.2")
+        self.assertEqual(status["overlay_version"], "1.4.0")
         self.assertEqual(status["poll_interval_ms"], 200)
         self.assertEqual(status["ui_tick_ms"], 100)
         self.assertEqual(status["base_map_mode"], "overview")

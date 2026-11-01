@@ -65,8 +65,12 @@ def pe_properties(executable):
         require(bool(levels), "The executable has no requestedExecutionLevel manifest entry")
         require(all(item.get("level") == "asInvoker" and item.get("uiAccess") == "false" for item in levels),
                 "The executable requests elevation or UI access")
+        dpi_modes = [element.text for manifest in manifests for element in manifest.iter()
+                     if element.tag.rsplit("}", 1)[-1] == "dpiAwareness"]
+        require(any(value and "PerMonitorV2" in value for value in dpi_modes),
+                "The executable is missing native high-DPI rendering")
         return {"architecture": "x64", "subsystem": "windows-gui",
-                "requested_execution_level": "asInvoker", "ui_access": False}
+                "requested_execution_level": "asInvoker", "ui_access": False, "dpi_awareness": "PerMonitorV2"}
     finally:
         pe.close()
 

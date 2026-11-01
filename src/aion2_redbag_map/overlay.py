@@ -22,14 +22,19 @@ from .history_store import atomic_write
 from .localization import map_name, restored_language
 from .overlay_text import text
 from .resources import load_maps
+from .map_markers import marker_image, MARKER_COLORS
+from .ui_theme import enable_dpi_awareness, ui_scale
 from . import __version__
 
 ROOT = Path(__file__).resolve().parent
 OVERLAY_VERSION = __version__
 FOLLOW_CENTERING_VERSION = 1
-BACKGROUND = "#171e28"
+BACKGROUND = "#101722"
+PANEL = "#182331"
+BORDER = "#293747"
+MUTED = "#91a2b5"
 TRANSPARENT = "#010203"
-COLORS = {"seen": "#ed625b", "used": "#e5ad49", "opened": "#83ab92", "unknown": "#a2abb9", "soon": "#b875df", "candidate": "#6bb7d6"}
+COLORS = {key: MARKER_COLORS[key] for key in ("seen", "used", "opened", "unknown", "soon", "candidate")}
 PLAYER_COLOR = "#54d8ea"
 PLAYER_MAX_AGE = 10
 POLL_INTERVAL = .2
@@ -37,7 +42,9 @@ UI_TICK_MS = 100
 TILE_CACHE_LIMIT = 24
 DEFAULT_FOLLOW_ZOOM = 20
 BAG_FOCUS_SPAN = 24000  # About 240 metres across the smaller viewport dimension.
-EXPANDED_HEIGHT = 575
+OVERLAY_WIDTH = 400
+HEADER_HEIGHT = 52
+EXPANDED_HEIGHT = 616
 
 
 def positive(value):
@@ -180,7 +187,7 @@ def render_map_frame(base, bounds, cx, cy, scale, width, height, tile_loader=Non
         return source.transform((right - left, bottom - top), Image.Transform.AFFINE, affine,
                                 resample, fillcolor="#d4c8b2")
 
-    frame = raster(base, bounds, (0, 0, width, height), Image.Resampling.BILINEAR)
+    frame = raster(base, bounds, (0, 0, width, height), Image.Resampling.BICUBIC)
     # The overview is sufficient at small scales; tiles matter as its source pixels become visible.
     if tile_loader and max(bounds["w"] * scale / base.width, bounds["h"] * scale / base.height) >= .5:
         for col, row, region, box in visible_tiles(bounds, cx, cy, scale, width, height):
@@ -420,79 +427,97 @@ class DesktopOverlay:
         self.map_dragged = False
         self.click_points = []
         self.window_flags = {}
+        self.marker_photos = {}
+        enable_dpi_awareness()
         self.root = tk.Tk()
         self.root.withdraw()
+        self.dpi_scale = ui_scale(self.root)
+        p = self.px
         self.root.title("AION2 Desktop Map")
         self.root.overrideredirect(True)
-        self.root.configure(bg=BACKGROUND)
+        self.root.configure(bg=BORDER, padx=1, pady=1)
         self.root.attributes("-topmost", True)
         self.root.attributes("-alpha", self.alpha)
-        self.root.minsize(360, 45)
-        x = self.settings.get("x", max(20, self.root.winfo_screenwidth() - 390))
-        y = self.settings.get("y", 60)
+        self.root.minsize(p(OVERLAY_WIDTH), p(HEADER_HEIGHT))
+        # Older DPI-unaware windows stored 96-DPI coordinates. Keep that format
+        # so an upgrade preserves the apparent position at 125/150/200 percent.
+        x = round(self.settings["x"] * self.dpi_scale) if "x" in self.settings else max(20, self.root.winfo_screenwidth() - p(OVERLAY_WIDTH + 30))
+        y = round(self.settings.get("y", 60) * self.dpi_scale)
         # Saved locations from a disconnected monitor still leave a reachable title.
-        x = max(0, min(x, max(0, self.root.winfo_screenwidth() - 100)))
-        y = max(0, min(y, max(0, self.root.winfo_screenheight() - 45)))
-        self.root.geometry(f"360x{45 if self.collapsed else EXPANDED_HEIGHT}+{x}+{y}")
+        x = max(0, min(x, max(0, self.root.winfo_screenwidth() - p(OVERLAY_WIDTH))))
+        y = max(0, min(y, max(0, self.root.winfo_screenheight() - p(HEADER_HEIGHT if self.collapsed else EXPANDED_HEIGHT))))
+        self.root.geometry(f"{p(OVERLAY_WIDTH)}x{p(HEADER_HEIGHT if self.collapsed else EXPANDED_HEIGHT)}+{x}+{y}")
         self.root.bind("<Escape>", lambda _event: self.clear_target() if self.state.selected else self.toggle_collapse())
         self.root.protocol("WM_DELETE_WINDOW", self.close)
-        self.header = tk.Frame(self.root, bg="#263142", height=45)
+        self.header = tk.Frame(self.root, bg=PANEL, height=p(HEADER_HEIGHT))
         self.header.pack(fill="x")
         self.header.pack_propagate(False)
-        self.title_label = tk.Label(self.header, text=text("title"), bg="#263142", fg="#f4e6d4",
-                                    font=("Microsoft YaHei UI", 10, "bold"), anchor="w", padx=10)
+        self.brand_icon = tk.Label(self.header, image=self.marker_photo("seen", 28), bg=PANEL)
+        self.brand_icon.pack(side="left", padx=(p(12), p(7)))
+        self.title_label = tk.Label(self.header, text=text("title"), bg=PANEL, fg="#edf2f7",
+                                    font=("Microsoft YaHei UI", 12, "bold"), anchor="w")
         self.title_label.pack(side="left", fill="x", expand=True)
         self.fold_button = self.button(self.header, "+" if self.collapsed else "−", self.toggle_collapse, width=3)
-        self.fold_button.pack(side="right", padx=(0, 2), pady=7)
+        self.fold_button.pack(side="right", padx=(p(3), p(8)), pady=p(10))
         self.close_button = self.button(self.header, "×", self.close, width=3)
-        self.close_button.pack(side="right", padx=2, pady=7)
-        for widget in (self.header, self.title_label):
+        self.close_button.pack(side="right", padx=p(2), pady=p(10))
+        for widget in (self.header, self.title_label, self.brand_icon):
             widget.bind("<ButtonPress-1>", self.begin_drag)
             widget.bind("<B1-Motion>", self.drag_window)
             widget.bind("<ButtonRelease-1>", lambda _event: self.save_settings())
         self.body = tk.Frame(self.root, bg=BACKGROUND)
-        self.status_label = tk.Label(self.body, text=text("waiting"), anchor="w", bg=BACKGROUND, fg="#b1c0d4",
-                                     font=("Microsoft YaHei UI", 9), padx=10, pady=5)
+        self.status_label = tk.Label(self.body, text=text("waiting"), anchor="w", bg=BACKGROUND, fg=MUTED,
+                                     font=("Microsoft YaHei UI", 9), padx=p(13), pady=p(7))
         self.status_label.pack(fill="x")
         self.player_row = tk.Frame(self.body, bg=BACKGROUND)
-        self.player_row.pack(fill="x", padx=9, pady=(0, 4))
+        self.player_row.pack(fill="x", padx=p(12), pady=(0, p(7)))
         self.player_label = tk.Label(self.player_row, text=text("player_waiting"), anchor="w", bg=BACKGROUND,
-                                    fg="#899bb3", font=("Microsoft YaHei UI", 8))
+                                    fg=MUTED, font=("Microsoft YaHei UI", 9))
         self.player_label.pack(side="left", fill="x", expand=True)
         self.follow_button = self.button(self.player_row, text("follow_waiting"), self.toggle_follow)
         self.follow_button.pack(side="right")
         self.toolbar = tk.Frame(self.body, bg=BACKGROUND)
-        self.toolbar.pack(fill="x", padx=7, pady=(0, 5))
+        self.toolbar.pack(fill="x", padx=p(10), pady=(0, p(6)))
         self.fit_button = self.button(self.toolbar, text("fit"), self.fit)
-        self.fit_button.pack(side="left", padx=2)
+        self.fit_button.pack(side="left", padx=p(2))
         self.latest_button = self.button(self.toolbar, text("latest"), self.locate_latest)
-        self.latest_button.pack(side="left", padx=2)
-        self.button(self.toolbar, "−", lambda: self.zoom(1 / 1.5), width=2).pack(side="left", padx=2)
-        self.button(self.toolbar, "+", lambda: self.zoom(1.5), width=2).pack(side="left", padx=2)
+        self.latest_button.pack(side="left", padx=p(2))
         self.layer_button = self.button(self.toolbar, text("layer"), self.toggle_layer)
-        self.layer_button.pack(side="left", padx=2)
+        self.layer_button.pack(side="left", padx=p(2))
         self.alpha_button = self.button(self.toolbar, f"{self.alpha:.0%}", self.change_alpha, width=4)
-        self.alpha_button.pack(side="right", padx=2)
+        self.alpha_button.pack(side="right", padx=p(2))
         self.point_toolbar = tk.Frame(self.body, bg=BACKGROUND)
-        self.point_toolbar.pack(fill="x", padx=7, pady=(0, 5))
+        self.point_toolbar.pack(fill="x", padx=p(10), pady=(0, p(10)))
         self.candidate_button = self.button(self.point_toolbar, text("candidates", count=0), self.toggle_candidates)
-        self.candidate_button.pack(side="left", padx=2)
+        self.candidate_button.pack(side="left", padx=p(2))
         self.clear_button = self.button(self.point_toolbar, text("clear_target"), self.clear_target)
-        self.clear_button.pack(side="right", padx=2)
-        self.canvas = tk.Canvas(self.body, width=360, height=300, bg="#d4c8b2", highlightthickness=0, cursor="fleur")
+        self.clear_button.pack(side="right", padx=p(2))
+        self.canvas = tk.Canvas(self.body, width=p(OVERLAY_WIDTH), height=p(330), bg="#d4c8b2", highlightthickness=0, cursor="fleur")
         self.canvas.bind("<Configure>", self.resize)
         self.canvas.bind("<MouseWheel>", lambda event: self.zoom(1.3 if event.delta > 0 else 1 / 1.3, event.x, event.y))
         self.canvas.bind("<ButtonPress-1>", self.begin_pan)
         self.canvas.bind("<B1-Motion>", self.pan)
         self.canvas.bind("<ButtonRelease-1>", self.end_pan)
         self.canvas.bind("<Button-3>", lambda _event: self.clear_target())
-        self.detail_label = tk.Label(self.body, text=text("empty"), anchor="w", justify="left", bg=BACKGROUND,
-                                     fg="#d7e2ed", font=("Microsoft YaHei UI", 9), padx=9, pady=5, wraplength=342, height=4)
-        self.hint_label = tk.Label(self.body, text=text("hint"), bg=BACKGROUND, fg="#899bb3",
-                                   font=("Microsoft YaHei UI", 8), padx=8, pady=3)
+        zoom_controls = tk.Frame(self.canvas, bg=BORDER, padx=1, pady=1)
+        zoom_controls.place(relx=1, x=-p(10), y=p(10), anchor="ne")
+        self.button(zoom_controls, "+", lambda: self.zoom(1.5), width=2).pack()
+        self.button(zoom_controls, "−", lambda: self.zoom(1 / 1.5), width=2).pack(pady=(1, 0))
+        self.detail_label = tk.Label(self.body, text=text("empty"), anchor="w", justify="left", bg=PANEL,
+                                     fg="#d7e2ed", font=("Microsoft YaHei UI", 9), padx=p(13), pady=p(8), wraplength=p(370), height=3)
+        self.hint_label = tk.Label(self.body, text=text("hint"), bg=BACKGROUND, fg=MUTED,
+                                   font=("Microsoft YaHei UI", 8), padx=p(8), pady=p(6))
         # Reserve the footer first; a requested canvas height must not clip the target details.
         self.hint_label.pack(side="bottom", fill="x")
         self.detail_label.pack(side="bottom", fill="x")
+        self.legend = tk.Frame(self.body, bg=BACKGROUND, padx=p(9), pady=p(6))
+        self.legend.pack(side="bottom", fill="x")
+        self.legend_labels = {}
+        for kind in ("seen", "soon", "opened", "candidate"):
+            label = tk.Label(self.legend, image=self.marker_photo(kind, 16), compound="left", text=text("legend_" + kind),
+                             bg=BACKGROUND, fg="#c0ccda", font=("Microsoft YaHei UI", 8), padx=p(4))
+            label.pack(side="left", expand=True)
+            self.legend_labels[kind] = label
         self.canvas.pack(fill="both", expand=True)
         if not self.collapsed:
             self.body.pack(fill="both", expand=True)
@@ -509,8 +534,19 @@ class DesktopOverlay:
 
     def button(self, parent, label, command, width=None):
         return self.tk.Button(parent, text=label, command=command, width=width, takefocus=False,
-                              bg="#334155", fg="#e5edf7", activebackground="#46566e", activeforeground="#ffffff",
-                              relief="flat", borderwidth=0, padx=7, pady=4, font=("Microsoft YaHei UI", 8))
+                              bg="#253446", fg="#edf2f7", activebackground="#34485f", activeforeground="#ffffff",
+                              disabledforeground="#63758a", cursor="hand2", relief="flat", borderwidth=0,
+                              padx=self.px(9), pady=self.px(5), font=("Segoe UI", 11) if label in ("+", "−", "×") else ("Microsoft YaHei UI", 9))
+
+    def px(self, value):
+        return max(1, round(value * getattr(self, "dpi_scale", 1)))
+
+    def marker_photo(self, kind, size, selected=False):
+        pixels = max(8, min(96, self.px(size)))
+        key = (kind, pixels, selected)
+        if key not in self.marker_photos:
+            self.marker_photos[key] = self.ImageTk.PhotoImage(marker_image(kind, pixels, selected))
+        return self.marker_photos[key]
 
     def style_window(self):
         self.window_flags = own_window_style(self.root)
@@ -622,7 +658,7 @@ class DesktopOverlay:
             nearby = [(math.hypot(event.x - x, event.y - y), row) for x, y, row in self.click_points]
             if nearby:
                 distance, row = min(nearby, key=lambda pair: (pair[0], pair[1].get("kind") == "historical_candidate"))
-                if distance < 15:
+                if distance < self.px(16):
                     self.state.clear_target()
                     self.state.selected = row["id"]
                     self.paint()
@@ -659,8 +695,8 @@ class DesktopOverlay:
                     x, y = self.screen(row["x"], row["y"])
                     if not -10 < x < self.width + 10 or not -10 < y < self.height + 10:
                         continue
-                    self.canvas.create_polygon(x, y - 4, x + 4, y, x, y + 4, x - 4, y,
-                                               fill="#25485b", outline=COLORS["candidate"], width=1, tags="candidate")
+                    size = 10 if self.scale < self.fit_scale * 4 else 13
+                    self.canvas.create_image(round(x), round(y), image=self.marker_photo("candidate", size), tags="candidate")
                     self.candidate_click_points.append((x, y, row))
             self.candidate_render_key = key
         self.click_points = list(self.candidate_click_points)
@@ -719,10 +755,10 @@ class DesktopOverlay:
         self.collapsed = not self.collapsed
         if self.collapsed:
             self.body.pack_forget()
-            self.root.geometry("360x45")
+            self.root.geometry(f"{self.px(OVERLAY_WIDTH)}x{self.px(HEADER_HEIGHT)}")
         else:
             self.body.pack(fill="both", expand=True)
-            self.root.geometry(f"360x{EXPANDED_HEIGHT}")
+            self.root.geometry(f"{self.px(OVERLAY_WIDTH)}x{self.px(EXPANDED_HEIGHT)}")
         self.fold_button.configure(text="+" if self.collapsed else "−")
         self.save_settings()
         self.root.after_idle(self.style_window)
@@ -836,15 +872,17 @@ class DesktopOverlay:
         name = map_name(self.maps, self.state.map_id, language)
         alert_active = now < self.state.alert_until
         title = f"● {name}" if alert_active else name
-        self.title_label.configure(text=title, fg="#ffb0a7" if alert_active else "#f4e6d4")
+        self.title_label.configure(text=title, fg="#ffb0a7" if alert_active else "#edf2f7")
         self.fit_button.configure(text=text("fit", language), state="normal")
         self.latest_button.configure(text=text("latest", language))
         self.candidate_button.configure(text=text("candidates" if self.show_candidates else "candidates_hidden", language,
                                                   count=f"{len(self.candidates.get(self.state.map_id, [])):,}"),
-                                        bg="#255463" if self.show_candidates else "#334155")
+                                        bg="#234153" if self.show_candidates else "#253446")
         self.clear_button.configure(text=text("clear_target", language), state="normal" if self.state.selected else "disabled")
         self.layer_button.configure(text=text("background" if self.layer else "layer", language))
         self.hint_label.configure(text=text("locked_hint" if self.state.follow else "layer_hint" if self.layer else "hint", language))
+        for kind, label in self.legend_labels.items():
+            label.configure(text=text("legend_" + kind, language))
         if not self.state.snapshot:
             connection = text("waiting", language)
         elif not self.state.connected:
@@ -855,7 +893,9 @@ class DesktopOverlay:
             connection = text("paused", language)
         else:
             connection = text("live", language)
-        self.status_label.configure(text=f"{connection} · {text('count', language, count=len(rows))}")
+        receiving = self.state.connected and self.state.snapshot.get("mode") == "live" and not self.state.snapshot.get("paused") and self.state.snapshot.get("capture", {}).get("phase") == "observing"
+        self.status_label.configure(text=f"●  {connection}   ·   {text('count', language, count=len(rows))}",
+                                    fg="#68d6ae" if receiving else MUTED)
         if player:
             key = "player_age" if player["fresh"] else "player_expired"
             self.player_label.configure(text=text(key, language, seconds=player["age_seconds"]),
@@ -864,7 +904,7 @@ class DesktopOverlay:
             self.player_label.configure(text=text("player_waiting", language), fg="#899bb3")
         follow_key = "following" if self.state.follow else "follow"
         self.follow_button.configure(text=text(follow_key, language),
-                                     bg="#255463" if self.state.follow else "#334155")
+                                     bg="#234153" if self.state.follow else "#253446")
         selected = self.selected_target()
         if selected:
             status = display_status(selected, now)
@@ -917,12 +957,12 @@ class DesktopOverlay:
         self.canvas.delete("marker")
         self.paint_candidates()
         target = selected if selected and selected["map_id"] == self.state.map_id else None
-        indicator = target_indicator(*self.screen(target["x"], target["y"]), self.width, self.height) if target else None
+        indicator = target_indicator(*self.screen(target["x"], target["y"]), self.width, self.height, self.px(34)) if target else None
         if indicator and player and player["map_id"] == self.state.map_id:
             px, py = self.screen(player["x"], player["y"])
             if math.hypot(indicator["x"] - px, indicator["y"] - py) > 28:
                 self.canvas.create_line(px, py, indicator["x"], indicator["y"], fill=COLORS["candidate"] if target.get("kind") == "historical_candidate" else "#ffcab4",
-                                        width=2, dash=(5, 5), tags="marker")
+                                        width=self.px(2), dash=(self.px(5), self.px(5)), tags="marker")
         for row in rows:
             if row["id"] == self.state.selected and indicator and indicator["outside"]:
                 continue
@@ -931,36 +971,44 @@ class DesktopOverlay:
                 continue
             self.click_points.append((x, y, row))
             status = display_status(row, now)
-            radius = 7 if row["id"] == self.state.selected else 5
-            color = COLORS[status]
-            if row["id"] == self.state.selected:
-                ring = 12 + (4 * abs(math.sin(now * 3)) if alert_active else 0)
-                self.canvas.create_oval(x - ring, y - ring, x + ring, y + ring, outline=color, width=2, tags="marker")
-            self.canvas.create_oval(x - radius, y - radius, x + radius, y + radius,
-                                    fill=color, outline="#fff4df", width=1.5, tags="marker")
-            symbol = "✓" if status == "opened" else "?" if status == "unknown" else "◷" if status == "soon" else ""
-            if symbol:
-                self.canvas.create_text(x, y, text=symbol, fill="#ffffff", font=("Segoe UI", 8, "bold"), tags="marker")
+            if row["id"] != self.state.selected:
+                size = 18 if status in ("opened", "unknown") else 23
+                self.canvas.create_image(round(x), round(y), image=self.marker_photo(status, size), tags="marker")
         if target:
             self.paint_target(target, indicator, player, alert_active, now)
         if player and player["map_id"] == self.state.map_id:
             x, y = self.screen(player["x"], player["y"])
             if -20 < x < self.width + 20 and -20 < y < self.height + 20:
                 color = PLAYER_COLOR if player["fresh"] else "#899bb3"
-                self.canvas.create_oval(x - 11, y - 11, x + 11, y + 11, outline=color, width=2,
-                                        dash=None if player["fresh"] else (3, 3), tags="marker")
-                self.canvas.create_oval(x - 5, y - 5, x + 5, y + 5, outline="#f4fbff", width=1.5,
-                                        fill=color if player["fresh"] else "", tags="marker")
-                label = self.canvas.create_text(x, y - 19, text=text("player_short" if player["fresh"] else "expired_short", language),
+                if player["fresh"]:
+                    self.canvas.create_image(round(x), round(y), image=self.marker_photo("player", 27), tags="marker")
+                else:
+                    radius = self.px(10)
+                    self.canvas.create_oval(x-radius, y-radius, x+radius, y+radius, outline=color,
+                                            width=self.px(2), dash=(self.px(3), self.px(3)), tags="marker")
+                label = self.canvas.create_text(x, y - self.px(21), text=text("player_short" if player["fresh"] else "expired_short", language),
                                                fill=PLAYER_COLOR if player["fresh"] else "#c9d3df",
-                                               font=("Microsoft YaHei UI", 8, "bold"), tags="marker")
+                                               font=("Microsoft YaHei UI", 9, "bold"), tags="marker")
                 box = self.canvas.bbox(label)
                 if box:
                     backing = self.canvas.create_rectangle(box[0] - 3, box[1] - 2, box[2] + 3, box[3] + 2,
                                                            fill=BACKGROUND, outline="", tags="marker")
                     self.canvas.tag_lower(backing, label)
-        self.canvas.create_text(self.width - 8, self.height - 8, anchor="se", text=f"{self.scale/self.fit_scale:.1f}×",
-                                fill="#f0f5fa" if self.layer else "#655a47", font=("Consolas", 9), tags="marker")
+        self.paint_scale()
+
+    def paint_scale(self):
+        # World coordinates use centimetres. Select a readable 1/2/5 distance.
+        maximum_meters = self.px(80) / self.scale / 100
+        magnitude = 10 ** math.floor(math.log10(maximum_meters))
+        meters = max(value * magnitude for value in (1, 2, 5) if value * magnitude <= maximum_meters)
+        length = meters * 100 * self.scale
+        left, bottom = self.px(12), self.height - self.px(14)
+        self.canvas.create_rectangle(left-self.px(5), bottom-self.px(24), left+length+self.px(6), bottom+self.px(5),
+                                     fill=BACKGROUND, outline="", tags="marker")
+        self.canvas.create_line(left, bottom-self.px(4), left, bottom, left+length, bottom, left+length, bottom-self.px(4),
+                                fill="#edf2f7", width=self.px(1), tags="marker")
+        value = f"{meters/1000:g} km" if meters >= 1000 else f"{meters:g} m"
+        self.canvas.create_text(left, bottom-self.px(9), text=value, anchor="sw", fill="#edf2f7", font=("Segoe UI", 8), tags="marker")
 
     def paint_target(self, target, indicator, player, alert_active, now):
         x, y = indicator["x"], indicator["y"]
@@ -968,19 +1016,16 @@ class DesktopOverlay:
         color = COLORS[status]
         if indicator["outside"]:
             ux, uy = indicator["ux"], indicator["uy"]
-            points = (x + ux * 15, y + uy * 15,
-                      x - ux * 11 - uy * 9, y - uy * 11 + ux * 9,
-                      x - ux * 5, y - uy * 5,
-                      x - ux * 11 + uy * 9, y - uy * 11 - ux * 9)
-            self.canvas.create_polygon(*points, fill=color, outline="#fff4df", width=2, tags="marker")
+            tip, back, wing, inset = (self.px(value) for value in (15, 11, 9, 5))
+            points = (x + ux * tip, y + uy * tip,
+                      x - ux * back - uy * wing, y - uy * back + ux * wing,
+                      x - ux * inset, y - uy * inset,
+                      x - ux * back + uy * wing, y - uy * back - ux * wing)
+            self.canvas.create_polygon(*points, fill=color, outline="#fff4df", width=self.px(2), tags="marker")
             self.click_points.append((x, y, target))
             label_key = "candidate_outside" if status == "candidate" else "bag_outside"
         else:
-            ring = 15 + (4 * abs(math.sin(now * 3)) if alert_active else 0)
-            self.canvas.create_oval(x - ring, y - ring, x + ring, y + ring,
-                                    outline="#fff4df", width=2, tags="marker")
-            self.canvas.create_polygon(x, y - 10, x + 10, y, x, y + 10, x - 10, y,
-                                       fill=color, outline="#fff4df", width=2, tags="marker")
+            self.canvas.create_image(round(x), round(y), image=self.marker_photo(status, 32, True), tags="marker")
             label_key = "candidate_target" if status == "candidate" else "bag_target"
         label = text(label_key, self.language)
         if target.get("status") == "opened":
@@ -990,7 +1035,7 @@ class DesktopOverlay:
             label += "\n" + text("distance_short", self.language, meters=round(distance))
         # Keep labels inside the panel even at its top, side or bottom edges.
         above = y >= self.height / 2 if indicator["outside"] else y < self.height / 2
-        ty = y - 24 if above else y + 24
+        ty = y - self.px(23) if above else y + self.px(23)
         anchor = "s" if above else "n"
         item = self.canvas.create_text(x, ty, text=label, fill="#fff4df", anchor=anchor,
                                        justify="center", font=("Microsoft YaHei UI", 9, "bold"), tags="marker")
@@ -1001,11 +1046,12 @@ class DesktopOverlay:
             self.canvas.move(item, dx, dy)
             box = self.canvas.bbox(item)
             backing = self.canvas.create_rectangle(box[0] - 5, box[1] - 3, box[2] + 5, box[3] + 3,
-                                                   fill="#402423", outline=color, width=1, tags="marker")
+                                                   fill=BACKGROUND, outline=color, width=1, tags="marker")
             self.canvas.tag_lower(backing, item)
 
     def save_settings(self):
-        data = {"x": self.root.winfo_x(), "y": self.root.winfo_y(), "alpha": self.alpha,
+        density = getattr(self, "dpi_scale", 1)
+        data = {"x": round(self.root.winfo_x() / density), "y": round(self.root.winfo_y() / density), "alpha": self.alpha,
                 "collapsed": self.collapsed, "layer": self.layer, "follow": self.state.follow,
                 "show_candidates": self.show_candidates,
                 "follow_centering_version": FOLLOW_CENTERING_VERSION}
@@ -1022,10 +1068,11 @@ class DesktopOverlay:
         fresh = bool(player and player["fresh"])
         target = self.selected_target()
         target = target if target and target["map_id"] == self.state.map_id else None
-        indicator = target_indicator(*self.screen(target["x"], target["y"]), self.width, self.height) if target else None
+        indicator = target_indicator(*self.screen(target["x"], target["y"]), self.width, self.height, self.px(34)) if target else None
         data = {"pid": os.getpid(), "running": not self.stopping.is_set(), "connected": self.state.connected,
                 "overlay_version": OVERLAY_VERSION, "poll_interval_ms": round(POLL_INTERVAL * 1000),
                 "ui_tick_ms": UI_TICK_MS, "base_map_mode": self.raster_mode,
+                "dpi_scale": getattr(self, "dpi_scale", 1), "marker_style": "outlined-icons",
                 "tile_cache_count": len(self.tile_photos),
                 "api": f"http://127.0.0.1:{self.port}/api/state", "map_id": self.state.map_id,
                 "record_count": len(visible_records(self.state.snapshot, self.state.map_id)),

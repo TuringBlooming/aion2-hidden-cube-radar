@@ -2,6 +2,10 @@
 from .localization import restored_language
 
 TEXT = {
+    "legend_seen": ("背包", "Bag", "バッグ", "가방"),
+    "legend_soon": ("即将刷新", "Due soon", "まもなく", "곧 재출현"),
+    "legend_opened": ("已开启", "Opened", "開封済", "열림"),
+    "legend_candidate": ("候选", "Candidate", "候補", "후보"),
     "title": ("背包悬浮地图", "Bag mini map", "バッグ小マップ", "가방 미니 지도"),
     "waiting": ("正在连接本机地图…", "Connecting to local map…", "ローカルマップに接続中…", "로컬 지도 연결 중…"),
     "live": ("实时接收", "Receiving", "受信中", "수신 중"),
