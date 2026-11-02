@@ -33,7 +33,8 @@ def history(*rows, **preferences):
 class PersistenceTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
+        # Use the same directory identity for short and long Windows paths.
+        self.root = Path(self.tmp.name).resolve()
 
     def tearDown(self):
         self.tmp.cleanup()

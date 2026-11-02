@@ -98,7 +98,8 @@ class DesktopControllerTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.directory = Path(self.temporary.name)
+        # Windows runners may expose Temp through an 8.3 path alias.
+        self.directory = Path(self.temporary.name).resolve()
         self.client = FakeClient(self.directory)
         self.factory = FakeFactory(self.client)
         self.controller = RuntimeController(49173, self.directory, client=self.client,
