@@ -1,6 +1,10 @@
 # AION2 RedBag Map
 
-A local Windows tool that records red hidden bags observed in the game's incoming connection data, marks their coordinates, and updates their interaction or opened state when further events arrive.
+A community accessibility aid for AION2 players who cannot hear or have difficulty distinguishing the **Hidden Cube sound cue**. It aims especially to help deaf and hard-of-hearing players access supplementary cues through map markers, coordinates, and visual notifications.
+
+**This is a free, open-source, public-interest project with a non-commercial, non-profit purpose.** The project is not operated to earn revenue from sales, subscriptions, or advertising. Players are not asked to disclose hearing conditions or provide medical documentation.
+
+The local Windows tool records red hidden bags observed in the game's incoming connection data, marks their coordinates, and updates their interaction or opened state when further events arrive. Visual cues can be used independently; optional sound alerts are supplementary and can be disabled.
 
 **Version 1.4.2 · Windows desktop · MIT for original code and original data**
 
@@ -36,7 +40,7 @@ A temporary quiet period on the same connection preserves its confirmed map; new
 4. Choose **显示悬浮地图** (Show overlay) or **打开完整地图** (Open full map). Select a target to inspect its coordinates and recorded state.
 5. Use **停止接收** (Stop receiving) to stop capture. Your history remains in the data folder.
 
-The manager also provides **浏览历史** (Browse history), **打开数据目录** (Open data folder), and **导入地图资源** (Import map assets). Built-in maps work without an import; an optional matching artwork and calibration pack can override them. Browsing history or a map does not implicitly start capture. The manager's button labels are currently Chinese.
+The manager also provides Browse history, Open data folder, and Import map assets. Built-in maps work without an import; an optional matching artwork and calibration pack can override them. Browsing history or a map does not implicitly start capture. Manager labels follow the selected interface language.
 
 There is one user-facing EXE entry point. The `_internal/` directory contains runtime dependencies; the EXE alone is not portable. Python is not required to use the release package.
 
@@ -101,6 +105,8 @@ These implementation limits are not a guarantee of acceptance by the game's rule
 ## License and contributions
 
 [MIT](LICENSE) covers original project code and original public data. It does not relicense third-party content. See [third-party notices](THIRD_PARTY_NOTICES.md), [data and assets](docs/data-and-assets.md), and [CONTRIBUTING](CONTRIBUTING.md).
+
+The public-interest and non-commercial purpose describes how this project is developed and operated; it adds no use restriction to MIT. The [standard MIT terms](https://opensource.org/license/mit) permit commercial use and redistribution subject to their conditions. Third-party data and assets do not acquire MIT permission through inclusion here.
 
 **Redistribution permission for the A2Helper-derived candidate data, map artwork and calibration has not been confirmed.** These files are included at the project author's request with their provenance and original rights status preserved. Inclusion does not relicense them as MIT or imply official game endorsement. Downstream use and redistribution still require checking the upstream rights.
 
