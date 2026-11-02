@@ -1,10 +1,10 @@
-# AION2 RedBag Map
+# AION2 Hidden Cube Radar
 
 A community accessibility aid for AION2 players who cannot hear or have difficulty distinguishing the **Hidden Cube sound cue**. It aims especially to help deaf and hard-of-hearing players access supplementary cues through map markers, coordinates, and visual notifications.
 
 **This is a free, open-source, public-interest project with a non-commercial, non-profit purpose.** The project is not operated to earn revenue from sales, subscriptions, or advertising. Players are not asked to disclose hearing conditions or provide medical documentation.
 
-The local Windows tool records red hidden bags observed in the game's incoming connection data, marks their coordinates, and updates their interaction or opened state when further events arrive. Visual cues can be used independently; optional sound alerts are supplementary and can be disabled.
+The local Windows tool records red Hidden Cubes observed in the game's incoming connection data, marks their coordinates, and updates their interaction or opened state when further events arrive. Visual cues can be used independently; optional sound alerts are supplementary and can be disabled.
 
 **Version 1.4.2 · Windows desktop · MIT for original code and original data**
 
@@ -21,7 +21,7 @@ This is an independent project with no official endorsement. It only shows obser
 
 - One desktop manager to start or stop receiving data, open the overlay or browser map, and access history and the data folder.
 - Choose Simplified Chinese, English, Japanese, or Korean in the manager’s upper-right corner. Maps and alerts share the choice, which is saved across restarts. Language selection also works before reception starts.
-- Sound and Windows notifications for new red-bag observations.
+- Sound and Windows notifications for new Hidden Cube observations.
 - Local map detail is preserved when a target arrives. Following keeps the character reference centered; distant targets get a screen-edge arrow.
 - Separate observed, interacted, opened, and unknown states.
 - Persistent local history and clearly labeled estimated refresh windows.
@@ -34,8 +34,8 @@ A temporary quiet period on the same connection preserves its confirmed map; new
 
 ## Using the Windows package
 
-1. Extract `AION2-RedBag-Map-1.4.2-windows-x64.zip` completely.
-2. Open its `AION2 RedBag Map` folder, run **`AION2 RedBag Map.exe`**, and keep `_internal/` beside it.
+1. Extract `AION2-Hidden-Cube-Radar-1.4.2-windows-x64.zip` completely.
+2. Open its `AION2 Hidden Cube Radar` folder, run **`AION2 Hidden Cube Radar.exe`**, and keep `_internal/` beside it.
 3. The manager does not start capture automatically. Run the game and choose **开始实时接收** (Start live receiving) when you want live observations.
 4. Choose **显示悬浮地图** (Show overlay) or **打开完整地图** (Open full map). Select a target to inspect its coordinates and recorded state.
 5. Use **停止接收** (Stop receiving) to stop capture. Your history remains in the data folder.
@@ -72,9 +72,9 @@ This opens the same manager without starting capture. Calling the virtual enviro
 
 Artifacts are written under `dist/`:
 
-- `AION2 RedBag Map/AION2 RedBag Map.exe` and `_internal/`: the runnable directory.
-- `AION2-RedBag-Map-1.4.2-windows-x64.zip`: the complete Windows package.
-- `aion2-redbag-map-1.4.2-source.zip`: the source archive.
+- `AION2 Hidden Cube Radar/AION2 Hidden Cube Radar.exe` and `_internal/`: the runnable directory.
+- `AION2-Hidden-Cube-Radar-1.4.2-windows-x64.zip`: the complete Windows package.
+- `aion2-hidden-cube-radar-1.4.2-source.zip`: the source archive.
 - `SHA256SUMS.txt`: checksums for both ZIP files.
 
 The Windows package also includes its corresponding source, public datasets, build information, and actual dependency licenses under `_internal/`. Building does not publish or upload a release. See [the release guide](docs/releasing.md).
@@ -92,7 +92,9 @@ Node.js is only required for browser-code tests. Offline tests do not establish 
 
 Local history, settings, logs, and imported assets live under `AION2-RedBag-Map/data/` in the user's Windows Documents folder. The manager can open that folder. The tool has no telemetry, remote update check, or automatic upload. Its browser server binds only to loopback, normally on port `18726`.
 
-- [`candidates.json`](src/aion2_redbag_map/static/candidates.json) preserves **3,722 source records and 3,721 unique coordinate locations**. [Provenance](data/provenance.json) records the source and conversion. These are not confirmed red bags or current spawns.
+The legacy data-folder name is retained for upgrade compatibility. AION2 Hidden Cube Radar reuses existing locations, preferences, and history without renaming or moving the archive. Python module names and local service identifiers also retain their compatibility names.
+
+- [`candidates.json`](src/aion2_redbag_map/static/candidates.json) preserves **3,722 source records and 3,721 unique coordinate locations**. [Provenance](data/provenance.json) records the source and conversion. These are not confirmed red Hidden Cubes or current spawns.
 - [`data/observations.json`](data/observations.json) contains the project's public anonymized observations. Its `record_count` is the authoritative count for that snapshot.
 - Personal `history.json` is not automatically published or merged into the public dataset.
 - [`static/maps/`](src/aion2_redbag_map/static/maps) contains 18 overviews and 321 detailed tiles. The calibrated [`maps.json`](src/aion2_redbag_map/maps.json) and [`map-source.json`](src/aion2_redbag_map/map-source.json) preserve the geometry, origin and image checksums. These resources were obtained from A2Helper 0.1.25 and verified unchanged in 0.1.29; they are included in both source and Windows packages.

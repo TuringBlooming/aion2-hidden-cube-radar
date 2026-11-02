@@ -26,6 +26,11 @@ function loadI18n(blockStorage = false) {
 
 const i18n = loadI18n();
 assert.equal(i18n.language, "zh-CN");
+assert.equal(i18n.t("AION2隐藏背包雷达"), "AION2隐藏背包雷达");
+i18n.setLanguage("en");
+assert.equal(i18n.t("AION2隐藏背包雷达"), "AION2 Hidden Cube Radar");
+assert.equal(i18n.t("隐藏背包雷达"), "Hidden Cube Radar");
+i18n.setLanguage("zh-CN");
 const sourceKeys = Object.keys(i18n.catalogs["zh-CN"]).sort();
 assert.ok(sourceKeys.length > 70, "static and dynamic translation catalog must be populated");
 const placeholders = text => [...String(text).matchAll(/\{([A-Za-z0-9_]+)\}/g)].map(match => match[1]).sort();

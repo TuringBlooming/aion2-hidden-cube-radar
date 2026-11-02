@@ -4,7 +4,7 @@ from .localization import SUPPORTED_LANGUAGES, restored_language
 LANGUAGE_NAMES = ("简体中文", "English", "日本語", "한국어")
 
 TEXT = {
-    "title": ("红色背包地图", "Red Bag Map", "赤いバッグマップ", "빨간 가방 지도"),
+    "title": ("AION2隐藏背包雷达", "AION2 Hidden Cube Radar", "AION2 ヒドゥンキューブレーダー", "AION2 히든 큐브 레이더"),
     "receive_status": ("接收状态", "RECEPTION", "受信状況", "수신 상태"),
     "points": ("观测点位", "Recorded locations", "観測地点", "관측 지점"),
     "start": ("开始实时接收", "Start receiving", "リアルタイム受信を開始", "실시간 수신 시작"),
@@ -20,13 +20,13 @@ TEXT = {
     "idle": ("尚未开始接收", "Ready when you are", "受信を開始できます", "수신 준비 완료"),
     "idle_detail": ("先浏览地图，或开启实时接收。", "Browse the map or start live reception.", "マップを閲覧するか、リアルタイム受信を開始します。", "지도를 보거나 실시간 수신을 시작하세요."),
     "browsing": ("正在浏览历史", "Browsing history", "履歴を表示中", "기록 확인 중"),
-    "browsing_detail": ("查看已保存的背包点位与记录。", "View saved bag locations and records.", "保存済みのバッグの地点と記録を確認できます。", "저장된 가방 위치와 기록을 확인합니다."),
+    "browsing_detail": ("查看已保存的背包点位与记录。", "View saved Hidden Cube locations and records.", "保存済みのバッグの地点と記録を確認できます。", "저장된 가방 위치와 기록을 확인합니다."),
     "paused": ("接收已停止", "Reception stopped", "受信停止中", "수신 중지됨"),
     "paused_detail": ("记录已保留，可随时继续接收。", "Your records are saved. Resume at any time.", "記録は保持されています。いつでも受信を再開できます。", "기록이 보존되어 있습니다. 언제든 다시 수신할 수 있습니다."),
     "unavailable": ("接收暂不可用", "Reception unavailable", "受信できません", "수신할 수 없음"),
     "unavailable_detail": ("请查看数据目录中的接收日志。", "Check the reception log in the data folder.", "データフォルダー内の受信ログを確認してください。", "데이터 폴더에서 수신 로그를 확인하세요."),
     "receiving": ("正在接收", "Receiving", "受信中", "수신 중"),
-    "receiving_detail": ("新背包与状态变化会自动更新到地图。", "New bags and status changes appear on the map.", "新しいバッグと状態の変化をマップに自動反映します。", "새 가방과 상태 변경이 지도에 자동으로 반영됩니다."),
+    "receiving_detail": ("新背包与状态变化会自动更新到地图。", "New Hidden Cubes and status changes appear on the map.", "新しいバッグと状態の変化をマップに自動反映します。", "새 가방과 상태 변경이 지도에 자동으로 반영됩니다."),
     "waiting": ("正在等待记录", "Waiting for records", "記録を待機中", "기록 대기 중"),
     "waiting_detail": ("等待本机收到游戏记录。", "Waiting for game records to reach this computer.", "この端末がゲームの記録を受信するのを待っています。", "이 컴퓨터에 게임 기록이 수신되기를 기다립니다."),
     "storage_error": ("存档暂未保存，请检查数据目录。", "Records could not be saved. Check the data folder.", "記録を保存できません。データフォルダーを確認してください。", "기록을 저장하지 못했습니다. 데이터 폴더를 확인하세요."),

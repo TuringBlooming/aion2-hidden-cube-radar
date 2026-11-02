@@ -433,7 +433,7 @@ class DesktopOverlay:
         self.root.withdraw()
         self.dpi_scale = ui_scale(self.root)
         p = self.px
-        self.root.title("AION2 Desktop Map")
+        self.root.title(text("title"))
         self.root.overrideredirect(True)
         self.root.configure(bg=BORDER, padx=1, pady=1)
         self.root.attributes("-topmost", True)

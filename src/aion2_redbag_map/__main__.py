@@ -44,7 +44,7 @@ def dispatch(argv=None):
             return module.main()
         finally:
             sys.argv = original
-    parser = argparse.ArgumentParser(description="AION2 RedBag Map")
+    parser = argparse.ArgumentParser(description="AION2 Hidden Cube Radar")
     parser.add_argument("--port", type=int, default=18726)
     parser.add_argument("--data-dir", type=Path)
     parser.add_argument("--self-check", type=Path, metavar="PATH")

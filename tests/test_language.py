@@ -74,7 +74,7 @@ class LanguageTests(unittest.TestCase):
                 self.assertIsNone(restored.storage_error)
 
     def test_real_alerts_use_language_and_preserve_structured_coordinates(self):
-        titles = {"zh-CN": "发现红色背包", "en": "Red bag spotted",
+        titles = {"zh-CN": "发现红色背包", "en": "Hidden Cube spotted",
                   "ja": "赤いバッグを発見", "ko": "빨간 가방 발견"}
         names = {"zh-CN": "阿尔特盖德", "en": "Altgard",
                  "ja": "アルトガルド", "ko": "알트가르드"}

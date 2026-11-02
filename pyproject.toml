@@ -3,9 +3,9 @@ requires = ["setuptools==80.10.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "aion2-redbag-map"
+name = "aion2-hidden-cube-radar"
 version = "1.4.2"
-description = "Local red-bag observations, alerts and an independent desktop map for AION2"
+description = "A free community accessibility radar for AION2 Hidden Cube visual alerts and local observations"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
@@ -13,7 +13,7 @@ license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 dependencies = ["Pillow==13.0.0"]
 
 [project.gui-scripts]
-aion2-redbag-map = "aion2_redbag_map.__main__:main"
+aion2-hidden-cube-radar = "aion2_redbag_map.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

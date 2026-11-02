@@ -42,7 +42,7 @@ jobs:
         run: python scripts/verify_package.py
       - uses: actions/upload-artifact@v7
         with:
-          name: aion2-redbag-map-windows
+          name: aion2-hidden-cube-radar-windows
           if-no-files-found: error
           path: |
             dist/*.zip

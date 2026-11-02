@@ -1,4 +1,6 @@
-# AION2 RedBag Map
+# AION2隐藏背包雷达
+
+**AION2 Hidden Cube Radar**
 
 面向无法听到或难以辨认 AION2 中 **Hidden Cube（隐藏背包）声音提示**的玩家开发的辅助性公益工具，尤其希望帮助听障玩家通过地图标记、坐标和可视化通知获得补充提示。
 
@@ -33,8 +35,8 @@
 
 ## 普通用户使用
 
-1. 将 `AION2-RedBag-Map-1.4.2-windows-x64.zip` 完整解压。
-2. 打开解压后的 `AION2 RedBag Map` 文件夹，双击 **`AION2 RedBag Map.exe`**，保留旁边的 `_internal` 文件夹。
+1. 将 `AION2-Hidden-Cube-Radar-1.4.2-windows-x64.zip` 完整解压。
+2. 打开解压后的 `AION2 Hidden Cube Radar` 文件夹，双击 **`AION2 Hidden Cube Radar.exe`**，保留旁边的 `_internal` 文件夹。
 3. 管理窗口启动后默认不接收游戏数据。需要实时提醒时，运行游戏并点击“开始实时接收”。
 4. 点击“显示悬浮地图”或“打开完整地图”。发现新记录时会提示；点击目标可查看坐标与当前记录状态。
 5. 在管理窗口点击“停止接收”结束接收。历史记录保存在数据目录，升级程序不会要求删除它们。
@@ -75,9 +77,9 @@ py -3.12 -m venv .venv
 
 构建输出位于 `dist/`：
 
-- `AION2 RedBag Map/AION2 RedBag Map.exe` 与 `_internal/`：可直接运行的单目录版本。
-- `AION2-RedBag-Map-1.4.2-windows-x64.zip`：完整 Windows 包。
-- `aion2-redbag-map-1.4.2-source.zip`：源码包。
+- `AION2 Hidden Cube Radar/AION2 Hidden Cube Radar.exe` 与 `_internal/`：可直接运行的单目录版本。
+- `AION2-Hidden-Cube-Radar-1.4.2-windows-x64.zip`：完整 Windows 包。
+- `aion2-hidden-cube-radar-1.4.2-source.zip`：源码包。
 - `SHA256SUMS.txt`：上述两个 ZIP 的 SHA-256。
 
 Windows 包的 `_internal/` 内还包含本次构建对应的源码、公开数据、构建信息和实际依赖许可。构建不会发布或上传 GitHub。具体布局与检查方法见 [构建与发布](docs/releasing.md)。
@@ -98,6 +100,8 @@ Node.js 仅用于网页测试，不是用户运行 EXE 的前置依赖。协议�
 ```text
 AION2-RedBag-Map/data/
 ```
+
+为兼容改名前的版本，数据目录继续使用上述名称；升级为“AION2隐藏背包雷达”后会沿用已有点位、设置和历史，无需改名或移动存档。源码模块与本机服务标识也保留兼容名称。
 
 管理窗口可打开该目录。个人历史、设置、日志和导入素材保存在这里；不是程序安装目录。没有遥测、远端更新检查或自动上传。网页服务仅监听本机地址，默认端口为 `18726`。
 

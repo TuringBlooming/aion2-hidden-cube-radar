@@ -38,7 +38,7 @@ class DesktopWindow:
         self.root = tk.Tk()
         self.scale = ui_scale(self.root)
         self.px = lambda value: round(value * self.scale)
-        self.root.title("AION2 RedBag Map")
+        self.root.title(self.t("title"))
         icon = Path(__file__).resolve().parent / "redbag.ico"
         if icon.is_file():
             try:
@@ -69,6 +69,7 @@ class DesktopWindow:
 
     def apply_language(self, language):
         self.language = restored_language(language)
+        self.root.title(self.t("title"))
         for widget, key in self.localized_widgets:
             widget.configure(text=self.t(key))
         self.language_select.current(SUPPORTED_LANGUAGES.index(self.language))
@@ -140,7 +141,7 @@ class DesktopWindow:
         mark.pack(side="left", padx=(0, p(14)))
         title = tk.Frame(header, bg=BG)
         title.pack(side="left", fill="x", expand=True)
-        tk.Label(title, text="AION2  /  RED BAG MAP", anchor="w", font=("Segoe UI", 9, "bold"),
+        tk.Label(title, text="AION2  /  HIDDEN CUBE RADAR", anchor="w", font=("Segoe UI", 9, "bold"),
                  bg=BG, fg=MUTED).pack(fill="x")
         self.localized(tk.Label(title, anchor="w", font=("Microsoft YaHei UI", 21, "bold"),
                                 bg=BG, fg=TEXT), "title").pack(fill="x", pady=(p(1), 0))

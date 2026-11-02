@@ -23,7 +23,7 @@ import xml.etree.ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_EXE = ROOT / "dist/AION2 RedBag Map/AION2 RedBag Map.exe"
+DEFAULT_EXE = ROOT / "dist/AION2 Hidden Cube Radar/AION2 Hidden Cube Radar.exe"
 DEFAULT_REPORT = ROOT / "build/qa/frozen-service-check.json"
 APPLICATION_ID = "aion2-redbag-map"
 

@@ -17,7 +17,7 @@ import tomllib
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-NAME = "AION2 RedBag Map"
+NAME = "AION2 Hidden Cube Radar"
 SOURCE_DIRS = ("src", "tests", "scripts", "packaging", "docs", ".github")
 PUBLIC_DATA = ("observations.json", "provenance.json")
 SOURCE_FILES = ("README.md", "README.en.md", "CONTRIBUTING.md", "LICENSE",
@@ -178,18 +178,18 @@ def main():
               "code_signed": False, "source_sha256": source_digest,
               "git_commit": git_revision(),
               "dependencies": {d.metadata["Name"]: d.version for d in metadata.distributions()
-                               if d.metadata["Name"].lower() not in {"aion2-redbag-map", "pip"}},
+                               if d.metadata["Name"].lower() not in {"aion2-hidden-cube-radar", "aion2-redbag-map", "pip"}},
               "source_files": manifest}
     (internal / "build-info.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", "utf-8")
     check_package(output)
     checksums = [f"{digest(path)}  {path.relative_to(output).as_posix()}" for path in sorted(output.rglob("*")) if path.is_file()]
     (internal / "SHA256SUMS.txt").write_text("\n".join(checksums) + "\n", "utf-8")
-    binary_zip = dist / f"AION2-RedBag-Map-{version}-windows-x64.zip"
-    source_zip = dist / f"aion2-redbag-map-{version}-source.zip"
+    binary_zip = dist / f"AION2-Hidden-Cube-Radar-{version}-windows-x64.zip"
+    source_zip = dist / f"aion2-hidden-cube-radar-{version}-source.zip"
     zip_tree(output, binary_zip)
     with zipfile.ZipFile(source_zip, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for path in files:
-            archive.write(path, (Path(f"aion2-redbag-map-{version}") / path.relative_to(ROOT)).as_posix())
+            archive.write(path, (Path(f"aion2-hidden-cube-radar-{version}") / path.relative_to(ROOT)).as_posix())
     (dist / "SHA256SUMS.txt").write_text("\n".join(f"{digest(path)}  {path.name}" for path in (binary_zip, source_zip)) + "\n", "utf-8")
     print(json.dumps({"binary": str(binary_zip), "source": str(source_zip), "source_sha256": source_digest}, indent=2))
 

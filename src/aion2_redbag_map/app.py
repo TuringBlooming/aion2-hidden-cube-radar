@@ -283,7 +283,7 @@ def main():
                     app.server = server
                     app.start()
                     logging.info("Local map started on port %s (mode=%s)", args.port, app.state.mode)
-                    print(f"AION2 RedBag Map: {app.url}", flush=True)
+                    print(f"AION2 Hidden Cube Radar: {app.url}", flush=True)
                     if not args.no_browser:
                         webbrowser.open(app.url)
                     server.serve_forever(poll_interval=0.2)

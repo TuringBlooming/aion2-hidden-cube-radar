@@ -479,6 +479,7 @@ class DesktopLanguageTests(unittest.TestCase):
                             window.apply_status(controller.status())
                             root.update_idletasks()
                             self.assertEqual(window.language_select.current(), SUPPORTED_LANGUAGES.index(language))
+                            self.assertEqual(root.title(), desktop_text("title", language))
                             self.assertEqual(window.start_button.cget("text"), desktop_text("start", language))
                             for widget, key in window.localized_widgets:
                                 self.assertEqual(widget.cget("text"), DESKTOP_TEXT[key][SUPPORTED_LANGUAGES.index(language)])
