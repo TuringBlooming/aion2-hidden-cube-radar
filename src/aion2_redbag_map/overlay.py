@@ -1,4 +1,4 @@
-"""Independent topmost map. Reads only the local map API and tool-owned files.
+"""Independent topmost map. Uses only the local map API and tool-owned files.
 
 No game process/window discovery, capture, input injection, or sound playback.
 All Win32 window calls target the Tk window created by this module.
@@ -16,7 +16,7 @@ from pathlib import Path
 import queue
 import threading
 import time
-from urllib.request import HTTPRedirectHandler, ProxyHandler, build_opener
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from .history_store import atomic_write
 from .localization import map_name, restored_language
@@ -218,15 +218,17 @@ def queue_latest_event(events, item):
 
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *_args, **_kwargs):
-        raise ValueError("The overlay only reads its local API")
+        raise ValueError("The overlay only uses its local API")
 
 
 class OverlayState:
     """UI-only state: never alters observations or creates a new bag alert."""
-    def __init__(self, follow=True):
+    def __init__(self, follow=True, *, baseline_session=None, baseline_seq=None):
         self.snapshot = {}
-        self.session = None
-        self.seq = 0
+        self.baseline_supplied = bool(isinstance(baseline_session, str) and baseline_session
+                                      and type(baseline_seq) is int and baseline_seq >= 0)
+        self.session = baseline_session if self.baseline_supplied else None
+        self.seq = baseline_seq if self.baseline_supplied else 0
         self.map_id = 1110
         self.selected = None
         self.connected = False
@@ -267,7 +269,8 @@ class OverlayState:
         session = snapshot.get("session_id")
         seq = snapshot.get("alert_seq", 0)
         seq = seq if type(seq) is int and seq >= 0 else 0
-        new_session = session != self.session or not self.snapshot
+        new_session = session != self.session or (not self.snapshot and not self.baseline_supplied)
+        self.baseline_supplied = False
         previous_map = self.snapshot.get("current_map_id")
         current_map = snapshot.get("current_map_id")
         current_map = current_map if type(current_map) is int else None
@@ -307,6 +310,80 @@ class OverlayState:
 
     def disconnect(self):
         self.connected = False
+
+
+class AlertVisibility:
+    """Own-window visibility, with an explicit live-alert baseline, never history."""
+    def __init__(self, waiting=False, *, baseline_session=None, baseline_seq=None):
+        self.enabled = bool(waiting)
+        self.visible = not waiting
+        self.initialized = bool(isinstance(baseline_session, str) and baseline_session
+                                and type(baseline_seq) is int and baseline_seq >= 0)
+        self.session = baseline_session if self.initialized else None
+        self.seq = baseline_seq if self.initialized else 0
+        self.snapshot_time = None
+
+    def arm(self):
+        self.enabled = True
+        self.visible = False
+
+    def manual_show(self):
+        self.visible = True
+
+    def accept(self, snapshot, alert):
+        session, seq = snapshot.get("session_id"), snapshot.get("alert_seq", 0)
+        seq = seq if type(seq) is int and seq >= 0 else 0
+        now = positive(snapshot.get("now"))
+        if self.initialized and session == self.session and now and self.snapshot_time and now < self.snapshot_time:
+            return None
+        enabled = snapshot.get("overlay_on_alert") is True
+        first = not self.initialized
+        new_session = first or session != self.session
+        old_visible, old_enabled = self.visible, self.enabled
+        if new_session:
+            # A manual initial open remains visible, even when the saved mode is on.
+            # Subsequent service replacement resets an armed window to waiting.
+            if not first or old_enabled:
+                self.visible = not enabled
+            self.session, self.seq = session, seq
+            self.initialized = True
+        else:
+            if enabled != old_enabled:
+                self.visible = not enabled
+            current = snapshot.get("latest_alert")
+            is_live_alert = (seq > self.seq and snapshot.get("mode") == "live"
+                             and isinstance(session, str) and bool(session)
+                             and not snapshot.get("paused")
+                             and snapshot.get("capture", {}).get("phase") == "observing"
+                             and isinstance(current, dict) and current.get("seq") == seq
+                             and current.get("test") is not True and isinstance(alert, dict)
+                             and alert.get("id") == current.get("record_id")
+                             and alert.get("source") not in ("history", "replay"))
+            if enabled and is_live_alert:
+                self.visible = True
+            self.seq = max(self.seq, seq)
+        self.enabled = enabled
+        self.snapshot_time = now
+        return ("show" if self.visible else "hide") if self.visible != old_visible else None
+
+
+def consume_show_command(path, *, pid, api, started_at, now):
+    """Consume a fresh command only for this exact tool-owned overlay instance."""
+    path = Path(path)
+    try:
+        if path.stat().st_size > 4096:
+            return False
+        data = json.loads(path.read_text("utf-8"))
+        if (not isinstance(data, dict) or type(data.get("pid")) is not int
+                or data.get("pid") != pid or data.get("api") != api):
+            return False
+        requested = positive(data.get("requested_at"))
+        if not requested or not max(started_at, now - 10) <= requested <= now + 1:
+            return False
+        path.unlink()
+        return True
+    except (OSError, ValueError, UnicodeError):
+        return False
 
 
 class OverlayLock:
@@ -365,7 +442,7 @@ def load_settings(path):
         return {}
 
 
-def own_window_style(tk_root):
+def own_window_style(tk_root, *, show=True):
     """Only obtain/style this Tk window's own wrapper. Never inspect another app."""
     if os.name != "nt":
         return {"topmost": True, "no_activate": False}
@@ -383,22 +460,55 @@ def own_window_style(tk_root):
     style = user.GetWindowLongW(hwnd, -20)
     user.SetWindowLongW(hwnd, -20, (style | 0x08000000 | 0x00000080) & ~0x00040000)
     # Topmost, same rectangle, show without activating.
-    user.SetWindowPos(hwnd, W.HWND(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 | 0x0020 | 0x0040)
+    flags = 0x0001 | 0x0002 | 0x0010 | 0x0020
+    user.SetWindowPos(hwnd, W.HWND(-1), 0, 0, 0, 0, flags | (0x0040 if show else 0))
     actual = user.GetWindowLongW(hwnd, -20)
     return {"hwnd": int(hwnd), "topmost": bool(actual & 0x00000008), "no_activate": bool(actual & 0x08000000),
             "tool_window": bool(actual & 0x00000080)}
 
 
+def show_without_activation(tk_root):
+    """Map our Tk wrapper without activating it or inspecting another window."""
+    flags = own_window_style(tk_root, show=False)
+    if os.name != "nt":
+        tk_root.deiconify()
+        return flags
+    from ctypes import wintypes as W
+    user = ctypes.WinDLL("user32", use_last_error=True)
+    user.EnableWindow.argtypes = [W.HWND, W.BOOL]
+    user.EnableWindow.restype = W.BOOL
+    user.ShowWindow.argtypes = [W.HWND, ctypes.c_int]
+    user.ShowWindow.restype = W.BOOL
+    hwnd = flags["hwnd"]
+    # Tk must update its own withdrawn state. Temporarily disabling this owned
+    # wrapper prevents its ordinary deiconify from activating it on Windows.
+    user.EnableWindow(hwnd, False)
+    try:
+        tk_root.deiconify()
+        user.ShowWindow(hwnd, 4)  # SW_SHOWNOACTIVATE, never SW_SHOWNORMAL.
+    finally:
+        user.EnableWindow(hwnd, True)
+    return own_window_style(tk_root, show=True)  # Includes SWP_NOACTIVATE.
+
+
 class DesktopOverlay:
-    def __init__(self, port, settings_path, status_path, stop_path=None):
+    def __init__(self, port, settings_path, status_path, stop_path=None, *, hidden_until_alert=False,
+                 alert_baseline_session=None, alert_baseline_seq=None):
         import tkinter as tk
         from PIL import Image, ImageTk
         self.tk, self.Image, self.ImageTk = tk, Image, ImageTk
         self.settings_path, self.status_path = Path(settings_path), Path(status_path)
         self.stop_path = Path(stop_path) if stop_path else self.status_path.with_name("overlay.stop")
+        self.show_path = self.status_path.with_name("overlay.show")
         self.started_at = time.time()
         self.settings = load_settings(self.settings_path)
-        self.state = OverlayState(follow=self.settings.get("follow", True))
+        self.state = OverlayState(follow=self.settings.get("follow", True),
+                                  baseline_session=alert_baseline_session, baseline_seq=alert_baseline_seq)
+        self.visibility = AlertVisibility(hidden_until_alert, baseline_session=alert_baseline_session,
+                                          baseline_seq=alert_baseline_seq)
+        self.hide_pending = False
+        self.visibility_error = False
+        self.control_events = queue.Queue()
         self.maps = load_maps(self.settings_path.parent)
         self.candidates = load_candidates()
         self.show_candidates = self.settings.get("show_candidates", True)
@@ -461,6 +571,8 @@ class DesktopOverlay:
         self.fold_button.pack(side="right", padx=(p(3), p(8)), pady=p(10))
         self.close_button = self.button(self.header, "×", self.close, width=3)
         self.close_button.pack(side="right", padx=p(2), pady=p(10))
+        self.hide_button = self.button(self.header, text("hide_until_alert"), self.hide_until_alert)
+        self.hide_button.pack(side="right", padx=p(2), pady=p(10))
         for widget in (self.header, self.title_label, self.brand_icon):
             widget.bind("<ButtonPress-1>", self.begin_drag)
             widget.bind("<B1-Motion>", self.drag_window)
@@ -525,8 +637,9 @@ class DesktopOverlay:
         self.root.update_idletasks()
         if self.settings.get("follow_centering_version", 0) < FOLLOW_CENTERING_VERSION:
             self.save_settings()
-        self.window_flags = own_window_style(self.root)
-        self.root.deiconify()
+        self.window_flags = own_window_style(self.root, show=self.visibility.visible)
+        if self.visibility.visible:
+            self.root.deiconify()
         self.root.after_idle(self.style_window)
         self.worker = threading.Thread(target=self.poll, daemon=True, name="overlay-local-map-reader")
         self.worker.start()
@@ -549,8 +662,51 @@ class DesktopOverlay:
         return self.marker_photos[key]
 
     def style_window(self):
-        self.window_flags = own_window_style(self.root)
+        self.window_flags = own_window_style(self.root, show=self.visibility.visible)
         self.write_status()
+
+    def set_visible(self, visible):
+        if visible:
+            self.window_flags = show_without_activation(self.root)
+        else:
+            self.root.withdraw()
+
+    def hide_until_alert(self):
+        if self.hide_pending or not self.state.connected:
+            return
+        snapshot = self.state.snapshot
+        token = snapshot.get("control_token")
+        if not isinstance(token, str) or not token:
+            self.visibility_error = True
+            return
+        self.hide_pending = True
+        self.visibility_error = False
+        session, process_id = snapshot.get("session_id"), snapshot.get("process_id")
+        threading.Thread(target=self._save_alert_only, args=(token, session, process_id),
+                         daemon=True, name="overlay-alert-settings").start()
+
+    def _save_alert_only(self, token, session, process_id):
+        try:
+            opener = build_opener(ProxyHandler({}), NoRedirect())
+            base = f"http://127.0.0.1:{self.port}"
+            request = Request(base + "/api/control", method="POST",
+                              data=json.dumps({"action": "alert_settings", "overlay_on_alert": True}).encode("utf-8"),
+                              headers={"Content-Type": "application/json", "Origin": base, "X-Redbag-Key": token})
+            with opener.open(request, timeout=2) as response:
+                result = json.loads(response.read(65536))
+            if not isinstance(result, dict) or result.get("ok") is not True:
+                raise ValueError("overlay preference was not saved")
+            with opener.open(base + "/api/state", timeout=2) as response:
+                raw = response.read(8 * 1024 * 1024 + 1)
+            if len(raw) > 8 * 1024 * 1024:
+                raise ValueError("local snapshot too large")
+            data = json.loads(raw)
+            if (not isinstance(data, dict) or data.get("session_id") != session
+                    or data.get("process_id") != process_id or data.get("overlay_on_alert") is not True):
+                raise ValueError("local service or preference changed")
+            self.control_events.put((True, data))
+        except (OSError, ValueError, TypeError):
+            self.control_events.put((False, None))
 
     def current_map(self):
         found = next((item for item in self.maps if item["id"] == self.state.map_id), None)
@@ -837,20 +993,47 @@ class DesktopOverlay:
                 connected, data = self.events.get_nowait()
                 if connected:
                     try:
-                        result = self.state.accept(data)
+                        self.accept_snapshot(data)
                     except (ValueError, TypeError, KeyError):
                         self.state.disconnect()
                         continue
-                    self.language = restored_language(data.get("language"))
-                    self.apply_update(result)
                 else:
                     self.state.disconnect()
         except queue.Empty:
             pass
+        try:
+            while True:
+                success, data = self.control_events.get_nowait()
+                self.hide_pending = False
+                if success:
+                    self.visibility.arm()
+                    self.set_visible(False)
+                    # The fresh response time prevents an older in-flight poll
+                    # from undoing a successfully saved preference.
+                    self.accept_snapshot(data)
+                else:
+                    self.visibility_error = True
+        except queue.Empty:
+            pass
+        if consume_show_command(self.show_path, pid=os.getpid(),
+                                api=f"http://127.0.0.1:{self.port}/api/state",
+                                started_at=self.started_at, now=time.time()):
+            self.visibility.manual_show()
+            self.set_visible(True)
         self.paint()
         self.write_status()
         if not self.stopping.is_set():
             self.root.after(UI_TICK_MS, self.tick)
+
+    def accept_snapshot(self, data):
+        result = self.state.accept(data)
+        self.language = restored_language(data.get("language"))
+        if self.visibility_error and data.get("overlay_on_alert") is True:
+            self.visibility_error = False
+        action = self.visibility.accept(data, result["alert"])
+        self.apply_update(result)
+        if action is not None:
+            self.set_visible(action == "show")
 
     def apply_update(self, result):
         local_alert = result["alert"] and (not self.state.follow or result["alert"]["map_id"] == self.state.map_id)
@@ -875,6 +1058,8 @@ class DesktopOverlay:
         self.title_label.configure(text=title, fg="#ffb0a7" if alert_active else "#edf2f7")
         self.fit_button.configure(text=text("fit", language), state="normal")
         self.latest_button.configure(text=text("latest", language))
+        self.hide_button.configure(text=text("hide_saving" if self.hide_pending else "hide_until_alert", language),
+                                   state="normal" if self.state.connected and not self.hide_pending else "disabled")
         self.candidate_button.configure(text=text("candidates" if self.show_candidates else "candidates_hidden", language,
                                                   count=f"{len(self.candidates.get(self.state.map_id, [])):,}"),
                                         bg="#234153" if self.show_candidates else "#253446")
@@ -893,6 +1078,8 @@ class DesktopOverlay:
             connection = text("paused", language)
         else:
             connection = text("live", language)
+        if self.visibility_error:
+            connection = text("hide_failed", language)
         receiving = self.state.connected and self.state.snapshot.get("mode") == "live" and not self.state.snapshot.get("paused") and self.state.snapshot.get("capture", {}).get("phase") == "observing"
         self.status_label.configure(text=f"●  {connection}   ·   {text('count', language, count=len(rows))}",
                                     fg="#68d6ae" if receiving else MUTED)
@@ -1075,6 +1262,10 @@ class DesktopOverlay:
         target = target if target and target["map_id"] == self.state.map_id else None
         indicator = target_indicator(*self.screen(target["x"], target["y"]), self.width, self.height, self.px(34)) if target else None
         data = {"pid": os.getpid(), "running": not self.stopping.is_set(), "connected": self.state.connected,
+                "visible": getattr(getattr(self, "visibility", None), "visible", True),
+                "overlay_on_alert": getattr(getattr(self, "visibility", None), "enabled", False),
+                "waiting_for_alert": bool(getattr(getattr(self, "visibility", None), "enabled", False)
+                                          and not getattr(getattr(self, "visibility", None), "visible", True)),
                 "overlay_version": OVERLAY_VERSION, "poll_interval_ms": round(POLL_INTERVAL * 1000),
                 "ui_tick_ms": UI_TICK_MS, "base_map_mode": self.raster_mode,
                 "dpi_scale": getattr(self, "dpi_scale", 1), "marker_style": "outlined-icons",
@@ -1124,10 +1315,17 @@ def main():
     parser.add_argument("--data-dir")
     parser.add_argument("--settings-path")
     parser.add_argument("--status-path")
+    parser.add_argument("--hidden-until-alert", action="store_true")
+    parser.add_argument("--alert-baseline-session")
+    parser.add_argument("--alert-baseline-seq", type=int)
     parser.add_argument("--stop", action="store_true", help="Request this tool's overlay to close normally")
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535:
         parser.error("invalid local port")
+    if ((args.alert_baseline_session is None) != (args.alert_baseline_seq is None)
+            or args.alert_baseline_seq is not None and args.alert_baseline_seq < 0
+            or args.alert_baseline_session == ""):
+        parser.error("invalid alert baseline")
     data = Path(args.data_dir).resolve() if args.data_dir else Path.home() / "Documents" / "AION2-RedBag-Map" / "data"
     settings = Path(args.settings_path) if args.settings_path else data / "overlay-settings.json"
     status = Path(args.status_path) if args.status_path else data / "overlay-status.json"
@@ -1139,7 +1337,9 @@ def main():
         with OverlayLock(data / "overlay.lock"):
             if stop.exists():
                 stop.unlink()
-            DesktopOverlay(args.port, settings, status, stop).run()
+            DesktopOverlay(args.port, settings, status, stop, hidden_until_alert=args.hidden_until_alert,
+                           alert_baseline_session=args.alert_baseline_session,
+                           alert_baseline_seq=args.alert_baseline_seq).run()
     except OSError as exc:
         parser.exit(1, str(exc) + "\n")
 

@@ -31,6 +31,8 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Browser logic tests
         run: |
+          node tests/test_alert_settings_ui.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tests/test_i18n.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tests/test_player_ui.cjs

@@ -13,6 +13,11 @@ history.json
 history.previous.json
 overlay-settings.json
 overlay-status.json
+alert-settings.json
+desktop-settings.json
+overlay.show
+overlay.stop
+sound-cache/
 assets/
 backups/
 tests/private/

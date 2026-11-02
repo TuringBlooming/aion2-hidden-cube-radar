@@ -15,7 +15,7 @@ import subprocess
 import sys
 import threading
 import time
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs, urlencode
 import webbrowser
 
 from .model import MapState
@@ -24,6 +24,8 @@ from .localization import test_alert
 from .history_store import data_directory, legacy_histories, migrate_legacy, HistoryInUse, WriterLock
 from . import __version__
 from .resources import load_maps, image_path
+from .audio import validate_sound_settings, wav_bytes
+from .alert_settings import DEFAULTS as ALERT_DEFAULTS
 
 ROOT = Path(__file__).resolve().parent
 
@@ -40,7 +42,9 @@ class Application:
         mode = "replay" if args.replay else "offline" if args.no_capture else "live"
         self.state = MapState(self.directory, maps, seed, mode, readonly=self.readonly)
         self.url = f"http://127.0.0.1:{args.port}"
-        self.notifier = Notifier(self.url, self.state.language)
+        self.notifier = Notifier(self.url, self.state.language, cache_directory=self.directory / "sound-cache")
+        self.notifier.set_sound_settings(self.state.alert_settings["sound_profile"],
+                                         self.state.alert_settings["sound_volume"])
         self.collector = None
         self.worker = None
         self.server = None
@@ -121,6 +125,20 @@ class Application:
         elif action == "language":
             self.state.set_language(body.get("language"))
             self.notifier.set_language(self.state.language)
+        elif action == "alert_settings":
+            if set(body) - {"action", *ALERT_DEFAULTS}:
+                raise ValueError("提醒设置无效")
+            self.state.set_alert_settings({key: value for key, value in body.items() if key != "action"})
+            self.notifier.set_sound_settings(self.state.alert_settings["sound_profile"],
+                                             self.state.alert_settings["sound_volume"])
+        elif action == "preview_sound":
+            profile, volume = validate_sound_settings(body.get("sound_profile"), body.get("sound_volume"))
+            if self.notifier.status.get("available"):
+                if not self.notifier.preview_sound(profile, volume):
+                    raise ValueError("提醒过于密集，请稍后试听。")
+            else:
+                return {"ok": True, "action": action,
+                        "preview_url": "/api/alert-sound?" + urlencode({"profile": profile, "volume": volume})}
         elif action == "test_alert":
             self.notifier.send(test_alert(self.state.language), self.state.sound)
         elif action == "open_data_folder":
@@ -193,6 +211,23 @@ class Handler(SimpleHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/api/state":
             self.json_response(self.application.snapshot())
+        elif path == "/api/alert-sound":
+            try:
+                query = parse_qs(urlsplit(self.path).query, keep_blank_values=True)
+                if set(query) != {"profile", "volume"} or any(len(values) != 1 for values in query.values()):
+                    raise ValueError("提示音选项无效")
+                if not query["volume"][0].isascii() or not query["volume"][0].isdigit():
+                    raise ValueError("提示音音量无效")
+                raw = wav_bytes(query["profile"][0], int(query["volume"][0]))
+            except (ValueError, TypeError):
+                self.json_response({"error": "提示音选项无效"}, 400)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/wav")
+            self.send_header("Content-Length", str(len(raw)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(raw)
         elif path == "/api/history-export":
             origin = self.headers.get("Origin")
             local = (f"http://127.0.0.1:{self.server.server_port}", f"http://localhost:{self.server.server_port}")

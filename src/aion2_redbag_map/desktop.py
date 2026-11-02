@@ -70,6 +70,9 @@ class DesktopWindow:
     def apply_language(self, language):
         self.language = restored_language(language)
         self.root.title(self.t("title"))
+        dialog = getattr(self, "alert_dialog", None)
+        if dialog is not None and dialog.root.winfo_exists():
+            dialog.set_language(self.language)
         for widget, key in self.localized_widgets:
             widget.configure(text=self.t(key))
         self.language_select.current(SUPPORTED_LANGUAGES.index(self.language))
@@ -211,8 +214,11 @@ class DesktopWindow:
         self.data_button.pack(side="left", padx=p(6))
         self.import_button = self.localized(ttk.Button(secondary, style="Quiet.TButton", command=self.import_resources), "import")
         self.import_button.pack(side="left", padx=(p(6), 0))
+        self.alert_settings_button = self.localized(ttk.Button(secondary, style="Quiet.TButton",
+                                                   command=self.open_alert_settings), "alert_settings")
+        self.alert_settings_button.pack(side="left", padx=(p(6), 0))
         self.buttons = [self.start_button, self.stop_button, self.overlay_button, self.map_button,
-                        self.history_button, self.data_button, self.import_button]
+                        self.history_button, self.data_button, self.import_button, self.alert_settings_button]
         footer = tk.Frame(frame, bg=BG)
         footer.pack(side="bottom", fill="x", pady=(p(14), 0))
         tk.Frame(footer, height=p(1), bg=BORDER).pack(fill="x", pady=(0, p(12)))
@@ -319,6 +325,14 @@ class DesktopWindow:
         folder = self.filedialog.askdirectory(parent=self.root, title=self.t("import_title"))
         if folder:
             self.perform(lambda: self.controller.import_assets(folder), "importing", "imported")
+
+    def open_alert_settings(self):
+        from .desktop_alerts import AlertSettingsDialog
+        dialog = getattr(self, "alert_dialog", None)
+        if dialog is not None and dialog.root.winfo_exists():
+            dialog.root.lift()
+            return
+        self.alert_dialog = AlertSettingsDialog(self.root, self.controller, self.language)
 
     def poll(self):
         if self.closing:

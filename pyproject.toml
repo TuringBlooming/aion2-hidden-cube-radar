@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aion2-hidden-cube-radar"
-version = "1.4.2"
+version = "1.5.0"
 description = "A free community accessibility radar for AION2 Hidden Cube visual alerts and local observations"
 readme = "README.md"
 requires-python = ">=3.12"

@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,7 @@ import subprocess
 import tempfile
 import time
 import tomllib
+import wave
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 import xml.etree.ElementTree as ET
@@ -87,11 +89,11 @@ def free_port():
     return port
 
 
-def json_request(opener, base, path, *, action=None, token=None):
+def json_request(opener, base, path, *, action=None, token=None, settings=None):
     headers = {"Accept": "application/json"}
     data = None
     if action is not None:
-        data = json.dumps({"action": action}).encode("utf-8")
+        data = json.dumps({"action": action, **(settings or {})}).encode("utf-8")
         headers.update({"Content-Type": "application/json", "Origin": base, "X-Redbag-Key": token})
     request = Request(base + path, data=data, headers=headers)
     try:
@@ -242,6 +244,24 @@ def verify(executable, report):
                         "HTTP map overview or tile does not match the bundled resource")
 
             state = owned_state(opener, base, process, directory)
+            require(state.get("sound_profile") == "chime" and state.get("sound_volume") == 35
+                    and state.get("overlay_on_alert") is False, "Default alert choices are incorrect")
+            with opener.open(base + "/api/alert-sound?profile=chime&volume=0", timeout=2) as response:
+                sound = response.read(1024 * 1024)
+                require(response.code == 200 and response.headers.get("Content-Type") == "audio/wav",
+                        "The frozen service did not serve a configured sound")
+            with wave.open(io.BytesIO(sound)) as wav:
+                require(wav.getsampwidth() == 2 and wav.getnchannels() == 1
+                        and not any(wav.readframes(wav.getnframes())), "Zero-volume audio is not silent PCM")
+            choices = {"sound_profile": "bubble", "sound_volume": 12, "overlay_on_alert": True}
+            status, saved = json_request(opener, base, "/api/control", action="alert_settings",
+                                         token=state["control_token"], settings=choices)
+            require(status == 200 and saved.get("ok") is True, "Frozen alert choices could not be saved")
+            state = owned_state(opener, base, process, directory)
+            require(all(state.get(key) == value for key, value in choices.items())
+                    and state.get("alert_seq") == 0, "Changing choices generated an alert or lost settings")
+            report["alert_settings"] = {"default_chime_volume": 35, "zero_volume_wav_verified": True,
+                                        "saved_choices_verified": True, "preview_played": False}
             status, rejection = json_request(opener, base, "/api/control", action="resume", token=state["control_token"])
             require(status == 400 and isinstance(rejection, dict) and isinstance(rejection.get("error"), str),
                     "The offline test service did not reject an authenticated resume request")

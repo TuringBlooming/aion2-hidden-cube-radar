@@ -108,11 +108,14 @@ function languageHarness(saved = "zh-CN") {
   });
   vm.runInContext(source, context);
   const start = app.indexOf("  function acceptData("), end = app.indexOf('  $("zoom-in").addEventListener');
+  const settingsStart = app.indexOf("  const soundProfiles = "), settingsEnd = app.indexOf("  let legacyRecordsKey = ");
   assert.ok(start > 0 && end > start);
+  assert.ok(settingsStart > 0 && settingsEnd > settingsStart);
   const helpers = vm.runInContext(`(() => {
     const state = { selected: null, session: null, connected: false, lastAlertSeq: null };
     const view = {};
     let activeAlert = null, languageRequest = null, languageSyncing = false, languageRevision = 0;
+    ${app.slice(settingsStart, settingsEnd)}
     let alertTimer = null, pollTimer = null;
     const locale = () => window.I18N.language, t = key => window.I18N.t(key);
     ${app.slice(start, end)}

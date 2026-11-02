@@ -11,6 +11,7 @@ import uuid
 from .localization import (DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES, map_name as localized_map_name,
                           restored_language, text as localized_text, validate_language)
 from .history_store import HistoryStore
+from . import alert_settings
 
 RED_TYPES = {1200039, 1200040, 1200041, 1201503, 1201504,
              1301199, 1301200, 1301244, 1301245}
@@ -83,6 +84,7 @@ class MapState:
                                      "map_invalidation_reason": None}
         self.paused = False
         self.sound = True
+        self.alert_settings = dict(alert_settings.DEFAULTS)
         self.language = DEFAULT_LANGUAGE
         self.capture = {"phase": "waiting", "detail": "正在寻找 AION2 游戏连接", "packets": 0,
                         "frames": 0, "last_packet_at": None, "last_frame_at": None,
@@ -90,6 +92,7 @@ class MapState:
         self.storage_error = None
         self.storage_warning = None
         self._load()
+        self.alert_settings = alert_settings.load(self.directory, self.alert_settings)
         if seed and not any(r.get("source_key") == seed["source_key"] for r in self.records.values()):
             self.records[seed["id"]] = dict(seed)
         self._restore_refresh_tracking()
@@ -184,6 +187,7 @@ class MapState:
             self.selected_map_id = selected if type(selected) is int and selected in {m["id"] for m in self.maps} else 1110
             self.current_map_id = self.selected_map_id
             self.sound = bool(data.get("sound", True))
+            self.alert_settings = alert_settings.load(self.directory, data)
             self.language = restored_language(data.get("language"))
         records = {}
         rows = data.get("records", [])
@@ -226,7 +230,7 @@ class MapState:
 
     def _history(self):
         return {"schema": 1, "selected_map_id": self.selected_map_id, "sound": self.sound,
-                "language": self.language,
+                "language": self.language, **self.alert_settings,
                 "records": [dict(row, refresh_anchor_at=_refresh_anchor(row)) for row in
                             sorted(self.records.values(), key=lambda r: r["last_seen"])],
                 "events": self.events[-300:]}
@@ -382,6 +386,17 @@ class MapState:
     def set_sound(self, enabled):
         with self.lock:
             self.sound = bool(enabled)
+            self._save()
+
+    def set_alert_settings(self, changes):
+        changes = alert_settings.validate(changes)
+        with self.lock:
+            values = dict(self.alert_settings, **changes)
+            try:
+                alert_settings.save(self.directory, values)
+            except OSError as exc:
+                raise ValueError("提醒设置未能保存，请检查数据目录是否可写。") from exc
+            self.alert_settings = values
             self._save()
 
     def set_language(self, language):
@@ -560,6 +575,7 @@ class MapState:
                       "player": self._player_snapshot(now),
                       "position_diagnostics": self._position_diagnostics_snapshot(now),
                       "paused": self.paused, "sound": self.sound, "language": self.language,
+                      **self.alert_settings,
                       "supported_languages": list(SUPPORTED_LANGUAGES),
                       "records": [self._display_record(r, now) for r in
                                   sorted(self.records.values(), key=lambda r: r["last_seen"], reverse=True)],

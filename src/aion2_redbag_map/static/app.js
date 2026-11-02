@@ -11,6 +11,15 @@
   const assets = new Map();
   let repaintPending = false, toastTimer = null, alertTimer = null, pollTimer = null;
   let activeAlert = null, languageRequest = null, languageSyncing = false, languageRevision = 0;
+  const soundProfiles = ["chime", "bell", "bubble", "arcade", "sonar", "alarm"];
+  const soundProfileLabels = { chime: "柔和音阶", bell: "轻铃", bubble: "气泡", arcade: "街机", sonar: "声呐", alarm: "原版警铃" };
+  let alertSettingsConfirmed = { sound_profile: "chime", sound_volume: 35, overlay_on_alert: false };
+  let alertSettingsDraft = null, alertSettingsDirty = false, alertSettingsPending = false, alertSettingsRevision = 0, previewBusy = false, activeSound = null;
+
+  function normalizedAlertSettings(data = {}) {
+    return { sound_profile: soundProfiles.includes(data.sound_profile) ? data.sound_profile : "chime", sound_volume: Number.isInteger(data.sound_volume) && data.sound_volume >= 0 && data.sound_volume <= 100 ? data.sound_volume : 35, overlay_on_alert: data.overlay_on_alert === true };
+  }
+
   let legacyRecordsKey = null, legacyRecords = null;
   try { state.notify = localStorage.getItem("redbag-desktop-notifications") === "true"; } catch (_) {}
   try { state.showCandidates = localStorage.getItem("redbag-show-candidates") !== "false"; } catch (_) {}
@@ -198,12 +207,75 @@
     $("packet-count").textContent = t("{count} 条解析记录", { count: number(capture.frames || 0) });
     $("packet-age").textContent = ageLabel(capture.last_frame_at);
     $("pause-button").replaceChildren(safeElement("span", "", paused ? "▶" : "Ⅱ"), document.createTextNode(" " + (paused ? t("继续接收") : t("暂停接收"))));
-    $("sound-button").replaceChildren(safeElement("span", "", state.data?.sound === false ? "♩" : "♪"), document.createTextNode(" " + (state.data?.sound === false ? t("警铃关闭") : state.data?.notification?.sound_error ? t("警铃未播放") : t("警铃开启"))));
-    $("sound-button").title = state.data?.notification?.sound_error ? localizedDetail(state.data.notification.sound_error) : t("三组双音警铃，约 3 秒。音量跟随此工具的系统音量，不调整游戏或系统音量。");
+    $("sound-button").replaceChildren(safeElement("span", "", state.data?.sound === false ? "♩" : "♪"), document.createTextNode(" " + (state.data?.sound === false ? t("提示音关闭") : state.data?.notification?.sound_error ? t("提示音未播放") : alertSettingsConfirmed.sound_volume === 0 ? t("提示音静音") : t("提示音开启"))));
+    $("sound-button").title = state.data?.notification?.sound_error ? localizedDetail(state.data.notification.sound_error) : t("在提醒设置中选择音色和音量，不调整游戏或系统音量。");
     for (const id of ["pause-button", "sound-button", "test-alert-button", "stop-button", "map-select"]) $(id).disabled = !state.connected || state.busy;
     if (state.data?.mode === "offline" || String(capture.detail || "").startsWith("离线检查模式")) { $("pause-button").disabled = true; $("pause-button").textContent = t("仅浏览地图"); $("pause-button").title = t("当前页面没有启动实时采集"); }
     renderStorage();
+    renderAlertSettings();
     notifyPermissionLabel();
+  }
+
+  function renderAlertSettings() {
+    const draft = alertSettingsDraft || alertSettingsConfirmed;
+    $("sound-profile").value = draft.sound_profile;
+    $("sound-volume").value = draft.sound_volume;
+    $("sound-volume-value").textContent = `${draft.sound_volume}%`;
+    $("overlay-on-alert").checked = draft.overlay_on_alert;
+    for (const id of ["sound-profile", "sound-volume", "overlay-on-alert"]) $(id).disabled = !state.connected || state.busy || alertSettingsPending;
+    $("preview-sound").disabled = !state.connected || state.busy || alertSettingsPending || previewBusy || draft.sound_volume === 0;
+    $("save-alert-settings").disabled = !state.connected || state.busy || alertSettingsPending || !alertSettingsDirty;
+    $("alert-settings-summary").textContent = `${t(soundProfileLabels[alertSettingsConfirmed.sound_profile])} · ${alertSettingsConfirmed.sound_volume}%`;
+    $("alert-settings-status").textContent = !state.connected ? t("连接工具后可调整提醒设置。") : alertSettingsPending ? t("正在保存提醒设置…") : alertSettingsDirty ? t("设置尚未保存，试听不会保存设置。") : t("设置已保存，重启后保留。");
+    $("alert-settings-status").classList.toggle("unsaved", alertSettingsDirty);
+  }
+  function editAlertSettings() {
+    if (alertSettingsPending) return;
+    const draft = { sound_profile: $("sound-profile").value, sound_volume: Number($("sound-volume").value), overlay_on_alert: $("overlay-on-alert").checked === true };
+    if (!soundProfiles.includes(draft.sound_profile) || !Number.isInteger(draft.sound_volume) || draft.sound_volume < 0 || draft.sound_volume > 100) return;
+    alertSettingsDraft = draft;
+    alertSettingsDirty = JSON.stringify(draft) !== JSON.stringify(alertSettingsConfirmed);
+    renderAlertSettings();
+  }
+  async function saveAlertSettings() {
+    if (!state.connected || state.busy || alertSettingsPending || !alertSettingsDirty || !state.data?.control_token) return false;
+    const settings = { ...alertSettingsDraft }, session = state.session, token = state.data.control_token, revision = ++alertSettingsRevision;
+    alertSettingsPending = true; renderAlertSettings();
+    try {
+      const response = await fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json", "X-Redbag-Key": token }, body: JSON.stringify({ action: "alert_settings", ...settings }), signal: AbortSignal.timeout(5000) });
+      const result = await response.json();
+      if (!response.ok || result.ok !== true) throw new Error(result.error || t("操作未完成"));
+      if (session !== state.session || revision !== alertSettingsRevision) return false;
+      alertSettingsConfirmed = settings; alertSettingsDraft = null; alertSettingsDirty = false;
+      toast(t("提醒设置已保存。")); return true;
+    } catch (_) { if (session === state.session && revision === alertSettingsRevision) toast(t("提醒设置未能保存，请重试。")); return false; }
+    finally { if (revision === alertSettingsRevision) { alertSettingsPending = false; alertSettingsRevision += 1; } renderAlertSettings(); }
+  }
+  async function playBrowserSound(profile, volume, url = null) {
+    if (volume === 0) return;
+    if (typeof Audio !== "function") throw new Error("browser audio unavailable");
+    if (activeSound) activeSound.pause();
+    const audio = new Audio(url || `/api/alert-sound?profile=${encodeURIComponent(profile)}&volume=${volume}`);
+    audio.volume = 1; activeSound = audio;
+    await audio.play();
+  }
+  async function previewSound() {
+    if (!state.connected || state.busy || alertSettingsPending || previewBusy || !state.data?.control_token) return;
+    const settings = alertSettingsDraft || alertSettingsConfirmed, session = state.session;
+    if (settings.sound_volume === 0) return;
+    previewBusy = true; renderAlertSettings();
+    try {
+      const response = await fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json", "X-Redbag-Key": state.data.control_token }, body: JSON.stringify({ action: "preview_sound", sound_profile: settings.sound_profile, sound_volume: settings.sound_volume }), signal: AbortSignal.timeout(5000) });
+      const result = await response.json();
+      if (!response.ok || result.ok !== true) throw new Error("preview unavailable");
+      if (state.session !== session) return;
+      if (result.preview_url) {
+        if (typeof result.preview_url !== "string" || !result.preview_url.startsWith("/api/alert-sound?")) throw new Error("invalid preview path");
+        await playBrowserSound(settings.sound_profile, settings.sound_volume, result.preview_url);
+      }
+      toast(t("试听已触发，不代表发现背包。"));
+    } catch (_) { toast(t("提示音暂时无法播放，请检查本工具音量或浏览器播放权限。")); }
+    finally { previewBusy = false; renderAlertSettings(); }
   }
 
   function storageSummary() {
@@ -565,15 +637,17 @@
       renderRecords(true); requestPaint();
     }
     clearTimeout(alertTimer); alertTimer = setTimeout(() => { $("alert-banner").hidden = true; state.flashId = null; renderRecords(true); requestPaint(); }, 30000);
+    if (!replay && (alert.test === true || state.data?.mode === "live" && item?.source === "live") && state.data?.sound !== false && state.data?.notification?.available !== true) playBrowserSound(alertSettingsConfirmed.sound_profile, alertSettingsConfirmed.sound_volume).catch(() => {});
     if (!replay && state.data?.notification?.available !== true && state.notify && "Notification" in window && Notification.permission === "granted") { try { const notification = new Notification(item ? t("AION2 · 收到红色背包记录") : t("AION2 · 测试提醒"), { body: $("alert-text").textContent, tag: `redbag-${alert.seq}`, silent: true }); notification.onclick = () => { window.focus(); if (item) selectRecord(item.id, true); notification.close(); }; } catch (_) {} }
   }
 
-  function acceptData(data, languageVersion = languageRevision) {
+  function acceptData(data, languageVersion = languageRevision, settingsVersion = alertSettingsRevision) {
     const previousMap = state.mapId, changedSession = state.session !== data.session_id;
     const acceptLanguage = languageVersion === languageRevision;
     state.data = data; state.connected = true; state.maps = Array.isArray(data.maps) ? data.maps : []; state.records = recordsWithRefreshEstimates(Array.isArray(data.records) ? data.records : []); state.data.records = state.records; state.session = data.session_id;
     state.mapId = data.selected_map_id ?? state.maps[0]?.id ?? 1110;
-    if (changedSession) { languageRequest = null; languageRevision += 1; }
+    if (changedSession) { languageRequest = null; languageRevision += 1; alertSettingsRevision += 1; alertSettingsDraft = null; alertSettingsDirty = false; alertSettingsPending = false; alertSettingsConfirmed = normalizedAlertSettings(data); }
+    else if (settingsVersion === alertSettingsRevision && !alertSettingsDirty && !alertSettingsPending) alertSettingsConfirmed = normalizedAlertSettings(data);
     // Connected windows share the service preference. Never write a saved browser
     // preference on connection, or let an old poll undo an in-flight selection.
     if (acceptLanguage && !languageRequest && window.I18N.languages.includes(data.language) && data.language !== locale()) applyLanguage(data.language);
@@ -628,12 +702,12 @@
     syncLanguage();
   }
 
-  async function poll() { clearTimeout(pollTimer); const languageVersion = languageRevision; try { const response = await fetch("/api/state", { cache: "no-store", signal: AbortSignal.timeout(3500) }); if (!response.ok) throw new Error(`HTTP ${response.status}`); const data = await response.json(); acceptData(data, languageVersion); } catch (_) { state.connected = false; renderConnection(); renderPlayer(); renderSelected(); requestPaint(); } finally { pollTimer = setTimeout(poll, state.connected ? 750 : 1800); } }
+  async function poll() { clearTimeout(pollTimer); const languageVersion = languageRevision, settingsVersion = alertSettingsRevision; try { const response = await fetch("/api/state", { cache: "no-store", signal: AbortSignal.timeout(3500) }); if (!response.ok) throw new Error(`HTTP ${response.status}`); const data = await response.json(); acceptData(data, languageVersion, settingsVersion); } catch (_) { state.connected = false; renderConnection(); renderPlayer(); renderSelected(); requestPaint(); } finally { pollTimer = setTimeout(poll, state.connected ? 750 : 1800); } }
   async function control(action, extra = {}) {
     if (!state.connected || state.busy || !state.data?.control_token) { toast(t("工具尚未连接，请等待本地连接恢复。")); return false; }
     state.busy = true; renderConnection();
-    const languageVersion = languageRevision;
-    try { const response = await fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json", "X-Redbag-Key": state.data.control_token }, body: JSON.stringify({ action, ...extra }), signal: AbortSignal.timeout(5000) }); const result = await response.json(); if (!response.ok || result.ok === false) throw new Error(result.error || t("操作未完成")); if (result.maps && result.capture) acceptData(result, languageVersion); else { const freshLanguageVersion = languageRevision, fresh = await fetch("/api/state", { cache: "no-store", signal: AbortSignal.timeout(3500) }); if (fresh.ok) acceptData(await fresh.json(), freshLanguageVersion); } return true; } catch (error) { if (action === "shutdown") { toast(t("已发送退出请求。连接关闭后，接收和提醒会停止。")); state.connected = false; } else toast(t("操作未完成：{reason}", { reason: localizedDetail(error.message) })); return false; } finally { state.busy = false; renderConnection(); }
+    const languageVersion = languageRevision, settingsVersion = alertSettingsRevision;
+    try { const response = await fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json", "X-Redbag-Key": state.data.control_token }, body: JSON.stringify({ action, ...extra }), signal: AbortSignal.timeout(5000) }); const result = await response.json(); if (!response.ok || result.ok === false) throw new Error(result.error || t("操作未完成")); if (result.maps && result.capture) acceptData(result, languageVersion, settingsVersion); else { const freshLanguageVersion = languageRevision, freshSettingsVersion = alertSettingsRevision, fresh = await fetch("/api/state", { cache: "no-store", signal: AbortSignal.timeout(3500) }); if (fresh.ok) acceptData(await fresh.json(), freshLanguageVersion, freshSettingsVersion); } return true; } catch (error) { if (action === "shutdown") { toast(t("已发送退出请求。连接关闭后，接收和提醒会停止。")); state.connected = false; } else toast(t("操作未完成：{reason}", { reason: localizedDetail(error.message) })); return false; } finally { state.busy = false; renderConnection(); }
   }
 
   $("zoom-in").addEventListener("click", () => zoom(1.5)); $("zoom-out").addEventListener("click", () => zoom(1 / 1.5)); $("fit-button").addEventListener("click", () => { setFollowPlayer(false); fitMap(); });
@@ -648,6 +722,11 @@
   $("latest-button").addEventListener("click", () => { const item = mapRecords().sort(newestFirst)[0]; if (item) { if (!inFilter(item)) { document.querySelector('[data-filter="all"]').click(); } selectRecord(item.id, true); } });
   $("clear-selection").addEventListener("click", clearTarget);
   $("clear-target").addEventListener("click", clearTarget);
+  $("sound-profile").addEventListener("change", editAlertSettings);
+  $("sound-volume").addEventListener("input", editAlertSettings);
+  $("overlay-on-alert").addEventListener("change", editAlertSettings);
+  $("save-alert-settings").addEventListener("click", saveAlertSettings);
+  $("preview-sound").addEventListener("click", previewSound);
   $("copy-coordinates").addEventListener("click", async () => {
     const candidate = selectedCandidate(), item = selectedRecord() || candidate; if (!item) return;
     const window = !candidate ? refreshWindow(item) : null;

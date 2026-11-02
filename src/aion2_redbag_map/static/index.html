@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark light">
   <title data-i18n="AION2隐藏背包雷达">AION2隐藏背包雷达</title>
-  <link rel="stylesheet" href="/style.css?v=1.4.2-hidden-cube-radar">
-  <script src="/i18n.js?v=1.4.2-hidden-cube-radar" defer></script>
-  <script src="/app.js?v=1.4.2-hidden-cube-radar" defer></script>
+  <link rel="stylesheet" href="/style.css?v=1.5.0-alert-settings">
+  <script src="/i18n.js?v=1.5.0-alert-settings" defer></script>
+  <script src="/app.js?v=1.5.0-alert-settings" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -61,6 +61,22 @@
 
       <footer class="sidebar-footer">
         <div class="control-row"><button class="secondary-button" id="pause-button" type="button" disabled><span aria-hidden="true">Ⅱ</span> <span data-i18n="暂停接收">暂停接收</span></button><button class="secondary-button" id="sound-button" type="button" disabled><span aria-hidden="true">♪</span> <span data-i18n="声音开启">声音开启</span></button></div>
+        <details class="alert-settings-panel" id="alert-settings-panel">
+          <summary><span aria-hidden="true">♫</span><span data-i18n="提醒设置">提醒设置</span><span class="alert-settings-summary" id="alert-settings-summary"></span></summary>
+          <div class="alert-settings-content">
+            <label class="alert-settings-label" for="sound-profile" data-i18n="提示音">提示音</label>
+            <select id="sound-profile" disabled>
+              <option value="chime" data-i18n="柔和音阶">柔和音阶</option><option value="bell" data-i18n="轻铃">轻铃</option><option value="bubble" data-i18n="气泡">气泡</option><option value="arcade" data-i18n="街机">街机</option><option value="sonar" data-i18n="声呐">声呐</option><option value="alarm" data-i18n="原版警铃">原版警铃</option>
+            </select>
+            <div class="alert-volume-heading"><label for="sound-volume" data-i18n="提示音量">提示音量</label><output id="sound-volume-value" for="sound-volume">35%</output></div>
+            <input id="sound-volume" type="range" min="0" max="100" step="1" value="35" aria-describedby="sound-volume-note" disabled>
+            <p id="sound-volume-note" data-i18n="只调整本工具提示音；0% 为静音。">只调整本工具提示音；0% 为静音。</p>
+            <label class="alert-overlay-choice"><input id="overlay-on-alert" type="checkbox" disabled><span data-i18n="仅在新背包提醒时显示悬浮窗">仅在新背包提醒时显示悬浮窗</span></label>
+            <p data-i18n="等待时隐藏悬浮窗；新的实收背包记录到达后再显示。历史记录和试听不会触发。">等待时隐藏悬浮窗；新的实收背包记录到达后再显示。历史记录和试听不会触发。</p>
+            <div class="alert-settings-actions"><button class="secondary-button" id="preview-sound" type="button" data-i18n="试听提示音" disabled>试听提示音</button><button class="secondary-button" id="save-alert-settings" type="button" data-i18n="保存设置" disabled>保存设置</button></div>
+            <p class="alert-settings-status" id="alert-settings-status" aria-live="polite"></p>
+          </div>
+        </details>
         <button class="notification-button" id="notification-button" type="button"><span data-i18n="开启浏览器通知">开启浏览器通知</span> <span aria-hidden="true">↗</span></button>
         <div class="footer-links"><button class="text-button" id="test-alert-button" type="button" data-i18n="测试提醒" disabled>测试提醒</button><button class="text-button muted" id="stop-button" type="button" data-i18n="退出工具" disabled>退出工具</button></div>
         <details class="storage-panel" id="storage-panel">

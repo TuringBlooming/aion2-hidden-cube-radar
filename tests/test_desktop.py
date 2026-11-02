@@ -225,6 +225,9 @@ class DesktopControllerTests(unittest.TestCase):
         (self.directory / "overlay-status.json").write_text(json.dumps(
             {"pid": 9876, "running": True, "api": self.client.url + "/api/state"}), encoding="utf-8")
         controls_before = len(self.client.controls)
+        # Closing ends a manager lifecycle; another manager may reuse that overlay.
+        self.controller = RuntimeController(49173, self.directory, client=self.client,
+                                            process_factory=self.factory, driver_check=lambda: True, sleep=lambda _s: None)
         self.controller.show_overlay()
         self.controller.close()
         self.assertEqual(len(self.client.controls), controls_before)

@@ -2,11 +2,13 @@ import argparse
 from functools import partial
 from http.server import ThreadingHTTPServer
 import json
+import io
 from pathlib import Path
 import sys
 import tempfile
 import threading
 import unittest
+import wave
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -90,6 +92,57 @@ class LocalApplicationTests(unittest.TestCase):
         self.assertEqual(self.fetch('/api/control', {'action': 'map', 'map_id': 1010}, headers)[0], 200)
         self.assertEqual(self.app.state.current_map_id, 1010)
         self.assertEqual(self.fetch('/api/control', {'action': 'map', 'map_id': -1}, headers)[0], 400)
+
+    def test_alert_preferences_persist_and_invalid_updates_are_atomic(self):
+        headers = {'X-Redbag-Key': self.app.token}
+        changes = {'sound_profile': 'bubble', 'sound_volume': 22, 'overlay_on_alert': True}
+        before = self.app.state.export_history()['records']
+        self.assertEqual(self.fetch('/api/control', {'action': 'alert_settings', **changes}, headers)[0], 200)
+        for key, value in changes.items():
+            self.assertEqual(self.app.snapshot()[key], value)
+        saved = (Path(self.tmp.name) / 'alert-settings.json').read_bytes()
+        for invalid in ({'sound_volume': True}, {'sound_volume': -1}, {'sound_volume': 101},
+                        {'sound_volume': 1.5}, {'sound_profile': '../alarm'},
+                        {'overlay_on_alert': 'true'}, {'other': 2}, {}):
+            self.assertEqual(self.fetch('/api/control', {'action': 'alert_settings', **invalid}, headers)[0], 400)
+            self.assertEqual((Path(self.tmp.name) / 'alert-settings.json').read_bytes(), saved)
+        from aion2_redbag_map.model import MapState
+        restored = MapState(Path(self.tmp.name), self.app.state.maps, mode='offline', readonly=True)
+        self.assertEqual(restored.alert_settings, changes)
+        self.assertEqual(restored.export_history()['records'], before)
+        self.assertEqual(self.app.state.alert_seq, 0)
+
+    def test_sound_preview_does_not_save_or_emit_bag_alerts(self):
+        headers = {'X-Redbag-Key': self.app.token}
+        original = dict(self.app.state.alert_settings)
+        body = {'action': 'preview_sound', 'sound_profile': 'sonar', 'sound_volume': 0}
+        self.assertEqual(self.fetch('/api/control', body)[0], 403)
+        code, raw, _ = self.fetch('/api/control', body, headers)
+        self.assertEqual(code, 200)
+        preview = json.loads(raw)['preview_url']
+        code, wav, wav_headers = self.fetch(preview)
+        self.assertEqual(code, 200)
+        self.assertEqual(wav_headers['Content-Type'], 'audio/wav')
+        with wave.open(io.BytesIO(wav)) as source:
+            self.assertTrue(all(b == 0 for b in source.readframes(source.getnframes())))
+        with patch.object(self.app.notifier, 'preview_sound', return_value=True) as play:
+            self.app.notifier.status['available'] = True
+            code, raw, _ = self.fetch('/api/control', {**body, 'sound_volume': 20}, headers)
+            self.assertEqual(code, 200)
+            self.assertNotIn('preview_url', json.loads(raw))
+            play.assert_called_once_with('sonar', 20)
+        self.assertEqual(self.app.state.alert_settings, original)
+        self.assertEqual(self.app.state.alert_seq, 0)
+        self.assertIsNone(self.app.state.latest_alert)
+        self.assertFalse((Path(self.tmp.name) / 'alert-settings.json').exists())
+
+    def test_sound_route_only_accepts_known_bounded_choices(self):
+        for query in ('profile=chime&volume=35', 'profile=alarm&volume=100'):
+            self.assertEqual(self.fetch('/api/alert-sound?' + query)[0], 200)
+        for query in ('', 'profile=../alert&volume=30', 'profile=chime&volume=101',
+                      'profile=chime&volume=-1', 'profile=chime&volume=35.5',
+                      'profile=chime&volume=20&volume=30', 'profile=chime&volume=30&file=x'):
+            self.assertEqual(self.fetch('/api/alert-sound?' + query)[0], 400)
 
     def test_history_and_python_sources_are_not_served(self):
         for path in ('/data/history.json', '/app.py', '/../model.py', '/maps/'):

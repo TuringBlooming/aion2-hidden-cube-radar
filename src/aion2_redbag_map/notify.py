@@ -5,22 +5,27 @@ import logging
 import os
 from pathlib import Path
 import queue
+import tempfile
 import threading
 import time
 import webbrowser
 
 from .localization import DEFAULT_LANGUAGE, text as localized_text, validate_language
+from . import audio
 
 
 class Notifier:
-    def __init__(self, url, language=DEFAULT_LANGUAGE):
+    def __init__(self, url, language=DEFAULT_LANGUAGE, cache_directory=None):
         self.url = url
         self.language = validate_language(language)
         self.queue = queue.Queue(maxsize=64)
         self.stopping = threading.Event()
-        self.sound_path = Path(__file__).resolve().parent / "static" / "alert.wav"
+        self._sound_settings = (audio.DEFAULT_SOUND, audio.DEFAULT_VOLUME)
+        self.sound_cache_directory = (Path(cache_directory) if cache_directory is not None else
+                                      Path(tempfile.gettempdir()) / "aion2-hidden-cube-radar" / "sound-cache").expanduser().resolve()
         self.status = {"available": False, "sent": 0, "last_at": None, "error": None,
-                       "sound_name": "三组双音警铃", "sound_requested": 0,
+                       "sound_name": audio.DEFAULT_SOUND, "sound_profile": audio.DEFAULT_SOUND,
+                       "sound_volume": audio.DEFAULT_VOLUME, "sound_requested": 0,
                        "sound_last_at": None, "sound_last_accepted": None, "sound_error": None}
         self.thread = threading.Thread(target=self._run, name="desktop-notifications", daemon=True)
 
@@ -31,16 +36,48 @@ class Notifier:
         # The worker updates the tray tooltip on its own thread; no alert or sound.
         self.language = validate_language(language)
 
+    @property
+    def sound_profile(self):
+        return self._sound_settings[0]
+
+    @property
+    def sound_volume(self):
+        return self._sound_settings[1]
+
+    def set_sound_settings(self, profile, volume):
+        settings = audio.validate_sound_settings(profile, volume)
+        # A tuple assignment gives queued requests one consistent setting pair.
+        self._sound_settings = settings
+        self.status.update(sound_name=settings[0], sound_profile=settings[0], sound_volume=settings[1])
+
     def close(self):
         self.stopping.set()
         if self.thread.is_alive():
             self.thread.join(timeout=3)
 
     def send(self, alert, sound=True):
+        profile, volume = self._sound_settings
         try:
-            self.queue.put_nowait((dict(alert), bool(sound)))
+            self.queue.put_nowait((dict(alert), bool(sound), profile, volume))
         except queue.Full:
             self.status["error"] = "提醒过于密集，请查看地图中的完整记录"
+
+    def preview_sound(self, profile, volume):
+        profile, volume = audio.validate_sound_settings(profile, volume)
+        try:
+            self.queue.put_nowait((None, True, profile, volume))
+        except queue.Full:
+            self.status["error"] = "提醒过于密集，请查看地图中的完整记录"
+            return False
+        return True
+
+    def _deliver_request(self, request, send_balloon):
+        """Both normal alerts and previews use the worker's serialized sound path."""
+        alert, sound, profile, volume = request
+        if sound and volume != 0:
+            self._play_sound(profile, volume)
+        if alert is not None:
+            send_balloon(alert)
 
     def _run(self):
         if os.name != "nt":
@@ -51,23 +88,25 @@ class Notifier:
             self.status.update(available=False, error=f"系统通知不可用：{type(exc).__name__}")
             logging.exception("Notification worker stopped")
 
-    def _play_sound(self):
-        """Submit our local alarm to Windows; acceptance does not prove audibility."""
-        self.status.update(sound_requested=self.status["sound_requested"] + 1,
-                           sound_last_at=time.time(), sound_last_accepted=False, sound_error=None)
-        try:
-            if not self.sound_path.is_file():
-                raise FileNotFoundError(self.sound_path)
-            import winsound
-            # NODEFAULT prevents Windows from substituting a system chime on failure.
-            winsound.PlaySound(str(self.sound_path),
-                               winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
-        except (ImportError, OSError, RuntimeError) as exc:
-            self.status["sound_error"] = f"警铃未能播放：{type(exc).__name__}。请检查工具音量或警铃文件。"
-            logging.exception("Alarm playback request failed")
+    def _play_sound(self, profile=None, volume=None):
+        """Submit our configured cue; acceptance does not prove audibility."""
+        current_profile, current_volume = self._sound_settings
+        profile, volume = audio.validate_sound_settings(
+            current_profile if profile is None else profile,
+            current_volume if volume is None else volume)
+        if volume == 0:
             return False
-        self.status["sound_last_accepted"] = True
-        return True
+        self.status.update(sound_requested=self.status["sound_requested"] + 1,
+                           sound_last_at=time.time(), sound_last_accepted=False, sound_error=None,
+                           sound_last_profile=profile, sound_last_volume=volume)
+        try:
+            accepted = audio.play(profile, volume, self.sound_cache_directory)
+        except (ImportError, OSError, RuntimeError, ValueError) as exc:
+            self.status["sound_error"] = f"警铃未能播放：{type(exc).__name__}。请检查工具音量或警铃文件。"
+            logging.exception("Alert sound playback request failed")
+            return False
+        self.status["sound_last_accepted"] = bool(accepted)
+        return bool(accepted)
 
     def _windows_loop(self):
         user = C.WinDLL("user32", use_last_error=True)
@@ -141,6 +180,16 @@ class Notifier:
         self.status["available"] = added
         if not added:
             self.status["error"] = "Windows 未接受托盘图标，仍可在页面查看提醒"
+
+        def send_balloon(alert):
+            nid.uFlags = 0x10
+            nid.szInfoTitle = alert.get("title", localized_text("new_bag", self.language))[:63]
+            nid.szInfo = alert.get("text", localized_text("view_map", self.language))[:255]
+            nid.dwInfoFlags = 1 | 0x10  # Sound belongs to our separate, gain-scaled cue.
+            nid.uTimeoutOrVersion = 10000
+            accepted = bool(shell.Shell_NotifyIconW(1, C.byref(nid))) if added else False
+            self.status.update(sent=self.status["sent"] + 1, last_at=time.time(), last_accepted=accepted)
+
         try:
             message = W.MSG()
             while not self.stopping.is_set():
@@ -153,18 +202,10 @@ class Notifier:
                 while user.PeekMessageW(C.byref(message), None, 0, 0, 1):
                     user.DispatchMessageW(C.byref(message))
                 try:
-                    alert, sound = self.queue.get(timeout=0.08)
+                    request = self.queue.get(timeout=0.08)
                 except queue.Empty:
                     continue
-                if sound:
-                    self._play_sound()
-                nid.uFlags = 0x10
-                nid.szInfoTitle = alert.get("title", localized_text("new_bag", self.language))[:63]
-                nid.szInfo = alert.get("text", localized_text("view_map", self.language))[:255]
-                nid.dwInfoFlags = 1 | 0x10  # We control the sound separately.
-                nid.uTimeoutOrVersion = 10000
-                accepted = bool(shell.Shell_NotifyIconW(1, C.byref(nid))) if added else False
-                self.status.update(sent=self.status["sent"] + 1, last_at=time.time(), last_accepted=accepted)
+                self._deliver_request(request, send_balloon)
         finally:
             if added:
                 shell.Shell_NotifyIconW(2, C.byref(nid))

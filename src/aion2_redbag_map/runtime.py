@@ -8,6 +8,7 @@ from pathlib import Path
 import socket
 import subprocess
 import sys
+import threading
 import time
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
@@ -16,6 +17,8 @@ import webbrowser
 from . import __version__
 from .history_store import atomic_write
 from .localization import DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES, validate_language
+from . import alert_settings
+from .audio import play as play_sound, validate_sound_settings
 
 APPLICATION_ID = "aion2-redbag-map"
 WORKERS = {"service": "app", "overlay": "overlay", "archive": "git_archive"}
@@ -116,14 +119,23 @@ class LocalClient:
         data = self._request(self.url + "/api/state")
         return self.validate(data) if data is not None else None
 
-    def control(self, action, *, expected_pid=None, language=None):
-        if action not in ("pause", "resume", "shutdown", "language"):
+    def control(self, action, *, expected_pid=None, language=None, **settings):
+        if action not in ("pause", "resume", "shutdown", "language", "alert_settings", "preview_sound"):
             raise ValueError("unsupported desktop control")
         body = {"action": action}
         if action == "language":
             body["language"] = validate_language(language)
         elif language is not None:
             raise ValueError("language is only valid for the language action")
+        if action == "alert_settings":
+            body.update(alert_settings.validate(settings))
+        elif action == "preview_sound":
+            if set(settings) != {"sound_profile", "sound_volume"}:
+                raise ValueError("invalid preview settings")
+            validate_sound_settings(settings["sound_profile"], settings["sound_volume"])
+            body.update(settings)
+        elif settings:
+            raise ValueError("settings are only valid for alert actions")
         data = self.snapshot()
         if data is None:
             raise DesktopError("本机地图已停止，请重新开始。")
@@ -154,8 +166,12 @@ class RuntimeController:
         self.clock, self.sleep = clock or time.monotonic, sleep or time.sleep
         self.service = None
         self.overlay = None
+        self._alert_baseline = None
+        self._overlay_lock = threading.RLock()
+        self._closing = False
         self.language = self._load_language()
         self.language_save_error = False
+        self.alert_settings = alert_settings.load(self.directory)
 
     def _load_language(self):
         # Read preferences only; never rewrite history from the manager. A later
@@ -189,6 +205,28 @@ class RuntimeController:
         if state is not None:
             self.client.control("language", expected_pid=state["process_id"], language=language)
         self._remember_language(language)
+
+    def set_alert_settings(self, **changes):
+        changes = alert_settings.validate(changes)
+        state = self.client.snapshot()
+        if state is not None:
+            self.client.control("alert_settings", expected_pid=state["process_id"], **changes)
+            self.alert_settings.update(changes)
+            if self.alert_settings["overlay_on_alert"] and state.get("mode") == "live" and not state.get("paused"):
+                self._ensure_alert_overlay(state)
+        else:
+            self.alert_settings = alert_settings.save(self.directory,
+                dict(alert_settings.load(self.directory), **changes))
+
+    def preview_sound(self, profile, volume):
+        profile, volume = validate_sound_settings(profile, volume)
+        state = self.client.snapshot()
+        if state is not None:
+            result = self.client.control("preview_sound", expected_pid=state["process_id"],
+                                         sound_profile=profile, sound_volume=volume)
+            if not result.get("preview_url"):
+                return
+        play_sound(profile, volume, self.directory / "sound-cache")
 
     def _spawn(self, kind, args):
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -249,7 +287,10 @@ class RuntimeController:
             if not self._running(self.service) or state["process_id"] != self.service.pid:
                 raise DesktopError("已有地图由其他窗口启动。请先关闭该窗口，再开始实时接收。")
             self._stop_service()
-        return self._start_service(history=False)
+        state = self._start_service(history=False)
+        if self.alert_settings["overlay_on_alert"]:
+            self._ensure_alert_overlay(state, fresh_service=True)
+        return state
 
     def stop_receiving(self):
         state = self.client.snapshot()
@@ -272,19 +313,50 @@ class RuntimeController:
             return None
 
     def show_overlay(self):
+        with self._overlay_lock:
+            if self._closing:
+                raise DesktopError("工具正在退出。")
+            return self._show_overlay()
+
+    def _show_overlay(self):
         self.ensure_history()
         if self._running(self.overlay):
+            self._signal_overlay_show(self.overlay.pid)
             return
         status = self._overlay_status()
         if status:
             if status.get("api") != self.client.url + "/api/state":
                 raise ServiceCollision("已有悬浮地图连接到另一份服务，请先关闭该悬浮地图。")
+            self._signal_overlay_show(status.get("pid"))
             return  # Reuse it without assuming ownership.
         self.overlay = self._spawn("overlay", ["--port", self.port, "--data-dir", self.directory])
         self.sleep(.2)
         if self.overlay.poll() is not None:
             self.overlay = None
             raise DesktopError("悬浮地图未能打开，可能已有另一份悬浮地图。请查看数据目录中的日志。")
+
+    def _signal_overlay_show(self, pid):
+        if type(pid) is not int or pid <= 0:
+            raise DesktopError("无法确认悬浮地图，请稍后重试。")
+        atomic_write(self.directory / "overlay.show", json.dumps({"pid": pid,
+            "api": self.client.url + "/api/state", "requested_at": time.time()}).encode("utf-8"))
+
+    def _ensure_alert_overlay(self, state, fresh_service=False, baseline=None):
+        with self._overlay_lock:
+            if not self._closing:
+                self._start_alert_overlay(state, fresh_service, baseline)
+
+    def _start_alert_overlay(self, state, fresh_service=False, baseline=None):
+        if self._running(self.overlay) or self._overlay_status():
+            return
+        args = ["--port", self.port, "--data-dir", self.directory, "--hidden-until-alert"]
+        session = state.get("session_id")
+        seq = 0 if fresh_service else state.get("alert_seq", 0)
+        if not fresh_service and baseline and baseline[0] == session:
+            seq = baseline[1]
+        if isinstance(session, str) and type(seq) is int and seq >= 0:
+            args += ["--alert-baseline-session", session, "--alert-baseline-seq", seq]
+        self.overlay = self._spawn("overlay", args)
 
     def open_data_directory(self):
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -300,6 +372,15 @@ class RuntimeController:
         state = self.client.snapshot()
         capture = state.get("capture", {}) if state else {}
         language = state.get("language") if state else None
+        settings = {key: state[key] for key in alert_settings.DEFAULTS if state and key in state}
+        if settings:
+            self.alert_settings.update(alert_settings.validate(settings))
+        if (state and self.alert_settings["overlay_on_alert"] and state.get("mode") == "live"
+                and not state.get("paused") and self._running(self.service)
+                and state.get("process_id") == self.service.pid):
+            self._ensure_alert_overlay(state, baseline=self._alert_baseline)
+        if state and isinstance(state.get("session_id"), str) and type(state.get("alert_seq")) is int:
+            self._alert_baseline = (state["session_id"], state["alert_seq"])
         if language in SUPPORTED_LANGUAGES and (language != self.language or self.language_save_error):
             try:
                 self._remember_language(language)
@@ -307,6 +388,7 @@ class RuntimeController:
                 pass  # A preference write failure must not hide reception status.
         return {"connected": state is not None, "version": __version__,
                 "language": self.language, "language_save_error": self.language_save_error,
+                **self.alert_settings,
                 "mode": state.get("mode") if state else None,
                 "paused": bool(state and state.get("paused")),
                 "phase": capture.get("phase"), "detail": capture.get("detail", ""),
@@ -346,6 +428,11 @@ class RuntimeController:
             self.service = None
 
     def close(self):
+        with self._overlay_lock:
+            self._closing = True
+            self._close_owned()
+
+    def _close_owned(self):
         try:
             if self._running(self.overlay):
                 status = self._overlay_status()
@@ -364,6 +451,7 @@ def self_check(output):
     """A local packaging check: imports only, with no GUI, workers, or collection."""
     modules = {}
     for name in ("aion2_redbag_map.app", "aion2_redbag_map.desktop", "aion2_redbag_map.desktop_text",
+                 "aion2_redbag_map.audio", "aion2_redbag_map.alert_settings", "aion2_redbag_map.desktop_alerts",
                  "aion2_redbag_map.overlay", "aion2_redbag_map.git_archive",
                  "aion2_redbag_map.resources", "tkinter", "PIL.Image"):
         try:

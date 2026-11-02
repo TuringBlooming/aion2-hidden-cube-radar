@@ -6,7 +6,7 @@ A community accessibility aid for AION2 players who cannot hear or have difficul
 
 The local Windows tool records red Hidden Cubes observed in the game's incoming connection data, marks their coordinates, and updates their interaction or opened state when further events arrive. Visual cues can be used independently; optional sound alerts are supplementary and can be disabled.
 
-**Version 1.4.2 · Windows desktop · MIT for original code and original data**
+**Version 1.5.0 · Windows desktop · MIT for original code and original data**
 
 [中文](README.md) · [Architecture](docs/architecture.md) · [Data and assets](docs/data-and-assets.md) · [Building and releasing](docs/releasing.md)
 
@@ -21,7 +21,9 @@ This is an independent project with no official endorsement. It only shows obser
 
 - One desktop manager to start or stop receiving data, open the overlay or browser map, and access history and the data folder.
 - Choose Simplified Chinese, English, Japanese, or Korean in the manager’s upper-right corner. Maps and alerts share the choice, which is saved across restarts. Language selection also works before reception starts.
-- Sound and Windows notifications for new Hidden Cube observations.
+- Sound and Windows notifications for new Hidden Cube observations. Choose Soft chime, Bell, Bubbles, Arcade, Sonar, or the original alarm; preview the sound and set its volume from 0–100%. The default is Soft chime at 35%; 0% is silent. This does not change system or game volume.
+- Alert settings in the desktop manager and the browser map share the same saved choices. Previews do not create observations or indicate a Hidden Cube sighting.
+- Optionally keep the overlay hidden until a new live Hidden Cube alert arrives. Reception continues while hidden. Use the hide-and-wait button in the overlay, or open it manually from the manager. Keep the manager running; it can be minimized. Exiting the whole tool stops reception. History, replay, previews, and ordinary status updates do not trigger a popup.
 - Local map detail is preserved when a target arrives. Following keeps the character reference centered; distant targets get a screen-edge arrow.
 - Separate observed, interacted, opened, and unknown states.
 - Persistent local history and clearly labeled estimated refresh windows.
@@ -30,11 +32,18 @@ This is an independent project with no official endorsement. It only shows obser
 
 Character coordinates are intermittent references. They expire after **10 seconds** and are not continuous tracking. Expired references do not produce live distance estimates. An edge arrow describes the target's direction relative to the current map view.
 
+### Usage notes: positioning and flight
+
+- **Continuous positioning during flight is not supported in this version.** The reference may remain at the pre-flight location for a long time. A centered marker does not establish that it is still your current location.
+- To request a fresh reference through normal gameplay, stand on safe ground, **press Space to jump in place, and land normally**. Existing tests usually received a new reference when landing. This is a single update rather than continuous tracking, and an update is not guaranteed after every jump.
+- Walking continuously can also update slowly. When the reference expires, use the official in-game minimap to determine your location; do not navigate from stale coordinates, connectors, or distances.
+- The tool does not press Space, move the character, or operate wings. These actions are performed by the player in the game.
+
 A temporary quiet period on the same connection preserves its confirmed map; new observations resume positioning automatically. After a real disconnect, replacement connection or app restart, “Map unconfirmed” means a normal channel or map change is needed to confirm the current map again. Browsing the world map is not used as evidence of the character's map.
 
 ## Using the Windows package
 
-1. Extract `AION2-Hidden-Cube-Radar-1.4.2-windows-x64.zip` completely.
+1. Extract `AION2-Hidden-Cube-Radar-1.5.0-windows-x64.zip` completely.
 2. Open its `AION2 Hidden Cube Radar` folder, run **`AION2 Hidden Cube Radar.exe`**, and keep `_internal/` beside it.
 3. The manager does not start capture automatically. Run the game and choose **开始实时接收** (Start live receiving) when you want live observations.
 4. Choose **显示悬浮地图** (Show overlay) or **打开完整地图** (Open full map). Select a target to inspect its coordinates and recorded state.
@@ -73,14 +82,15 @@ This opens the same manager without starting capture. Calling the virtual enviro
 Artifacts are written under `dist/`:
 
 - `AION2 Hidden Cube Radar/AION2 Hidden Cube Radar.exe` and `_internal/`: the runnable directory.
-- `AION2-Hidden-Cube-Radar-1.4.2-windows-x64.zip`: the complete Windows package.
-- `aion2-hidden-cube-radar-1.4.2-source.zip`: the source archive.
+- `AION2-Hidden-Cube-Radar-1.5.0-windows-x64.zip`: the complete Windows package.
+- `aion2-hidden-cube-radar-1.5.0-source.zip`: the source archive.
 - `SHA256SUMS.txt`: checksums for both ZIP files.
 
 The Windows package also includes its corresponding source, public datasets, build information, and actual dependency licenses under `_internal/`. Building does not publish or upload a release. See [the release guide](docs/releasing.md).
 
 ```powershell
 .venv/Scripts/python.exe -m unittest discover -s tests -v
+node tests/test_alert_settings_ui.cjs
 node tests/test_i18n.cjs
 node tests/test_player_ui.cjs
 node tests/test_refresh_ui.cjs
