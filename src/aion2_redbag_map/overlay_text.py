@@ -2,7 +2,7 @@
 from .localization import restored_language
 
 TEXT = {
-    "legend_seen": ("背包", "Bag", "バッグ", "가방"),
+    "legend_seen": ("背包", "Hidden Cube", "バッグ", "가방"),
     "legend_soon": ("即将刷新", "Due soon", "まもなく", "곧 재출현"),
     "legend_opened": ("已开启", "Opened", "開封済", "열림"),
     "legend_candidate": ("候选", "Candidate", "候補", "후보"),
@@ -13,7 +13,7 @@ TEXT = {
     "offline": ("连接断开 · 保留最后记录", "Disconnected · Last records retained", "切断 · 最後の記録を保持", "연결 끊김 · 마지막 기록 유지"),
     "paused": ("接收暂停", "Receiving paused", "受信停止中", "수신 일시정지"),
     "fit": ("全图", "Fit", "全体", "전체"),
-    "latest": ("背包", "Bag", "バッグ", "가방"),
+    "latest": ("背包", "Hidden Cube", "バッグ", "가방"),
     "clear_target": ("取消连线", "Clear target", "目標解除", "목표 해제"),
     "candidates": ("候选点 {count}", "Candidates {count}", "候補 {count}", "후보 {count}"),
     "candidates_hidden": ("显示候选 {count}", "Show candidates {count}", "候補表示 {count}", "후보 표시 {count}"),

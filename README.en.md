@@ -10,7 +10,7 @@ The local Windows tool records red Hidden Cubes observed in the game's incoming 
 
 [中文](README.md) · [Architecture](docs/architecture.md) · [Data and assets](docs/data-and-assets.md) · [Building and releasing](docs/releasing.md)
 
-This is an independent project with no official endorsement. It only shows observations received by the local client. **Coverage of the whole map, all channels, and all servers is not guaranteed.** Receiving a record does not prove a new spawn or that the bag is still available.
+This is an independent project with no official endorsement. It only shows observations received by the local client. **Coverage of the whole map, all channels, and all servers is not guaranteed.** Receiving a record does not prove a new spawn or that the Hidden Cube is still available.
 
 ## Features
 

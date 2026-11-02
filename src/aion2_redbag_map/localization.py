@@ -14,7 +14,7 @@ TEXT = {
     },
     "en": {
         "new_bag": "Hidden Cube spotted",
-        "test_title": "Alert test · No bag spawn",
+        "test_title": "Alert test · No Hidden Cube spawn",
         "test_text": "This is a test alert. When a Hidden Cube is detected, its map and coordinates will appear here.",
         "tray": "AION2 Hidden Cube Radar · Click to open",
         "view_map": "Check the map",
